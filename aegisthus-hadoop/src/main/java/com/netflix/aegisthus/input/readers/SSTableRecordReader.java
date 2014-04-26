@@ -15,6 +15,7 @@
  */
 package com.netflix.aegisthus.input.readers;
 
+import java.io.DataInput;
 import java.io.DataInputStream;
 import java.io.IOError;
 import java.io.IOException;
@@ -27,7 +28,9 @@ import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.TaskInputOutputContext;
 
-import com.netflix.aegisthus.input.AegSplit;
+import com.netflix.aegisthus.input.splits.AegIndexedSplit;
+import com.netflix.aegisthus.input.splits.AegSplit;
+import com.netflix.aegisthus.io.sstable.IndexedSSTableScanner;
 import com.netflix.aegisthus.io.sstable.SSTableScanner;
 
 public class SSTableRecordReader extends AegisthusRecordReader {
@@ -53,13 +56,10 @@ public class SSTableRecordReader extends AegisthusRecordReader {
 		AegSplit split = (AegSplit) inputSplit;
 
 		start = split.getStart();
-		//TODO: This has a side effect of setting compressionmetadata. remove this.
+		// TODO: This has a side effect of setting compressionmetadata. remove
+		// this.
 		InputStream is = split.getInput(ctx.getConfiguration());
-		if (split.isCompressed()) {
-			end = split.getCompressionMetadata().getDataLength();
-		} else {
-			end = split.getEnd();
-		}
+		end = split.getDataEnd();
 		outputFile = ctx.getConfiguration().getBoolean("aegsithus.debug.file", false);
 		filename = split.getPath().toUri().toString();
 
@@ -71,8 +71,15 @@ public class SSTableRecordReader extends AegisthusRecordReader {
 		}
 
 		try {
-			scanner = new SSTableScanner(new DataInputStream(is),
-					split.getConvertors(), end, Descriptor.fromFilename(filename).version);
+			DataInput indexInput = null;
+			if (inputSplit instanceof AegIndexedSplit) {
+				AegIndexedSplit indexedSplit = (AegIndexedSplit) inputSplit;
+				indexInput = new DataInputStream(indexedSplit.getIndexInput(ctx.getConfiguration()));
+				scanner = new IndexedSSTableScanner(is, split.getConvertors(), end, Descriptor.fromFilename(filename).version,
+						indexInput);
+			} else {
+				scanner = new SSTableScanner(is, split.getConvertors(), end, Descriptor.fromFilename(filename).version);
+			}
 			if (ctx.getConfiguration().get("aegisthus.maxcolsize") != null) {
 				scanner.setMaxColSize(ctx.getConfiguration().getLong("aegisthus.maxcolsize", -1L));
 				LOG.info(String.format("aegisthus.maxcolsize - %d",
@@ -91,7 +98,15 @@ public class SSTableRecordReader extends AegisthusRecordReader {
 			return false;
 		}
 		String json = null;
-		json = scanner.next();
+        try {
+            json = scanner.next();
+        } catch (IOError e) {
+            LOG.error("bad row", e);
+            context.getCounter("aegisthus", "IOError").increment(1L);
+        }
+		if (json == null) {
+		    return false;
+		}
 		pos += scanner.getDatasize();
 		json = json.trim();
 		if (outputFile) {

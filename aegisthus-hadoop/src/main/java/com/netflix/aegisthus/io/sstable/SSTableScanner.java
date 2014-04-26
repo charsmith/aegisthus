@@ -21,11 +21,13 @@ import java.io.DataInputStream;
 import java.io.FileInputStream;
 import java.io.IOError;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.Map;
 
 import org.apache.cassandra.db.ColumnSerializer;
+import org.apache.cassandra.db.ColumnSerializer.CorruptColumnException;
 import org.apache.cassandra.db.CounterColumn;
 import org.apache.cassandra.db.DeletedColumn;
 import org.apache.cassandra.db.ExpiringColumn;
@@ -64,20 +66,21 @@ public class SSTableScanner extends SSTableReader implements Iterator<String> {
 	private long maxColSize = -1;
 	private long errorRowCount = 0;
 
-	public SSTableScanner(DataInput input, Descriptor.Version version) {
-		this(input, null, -1, version);
-	}
-
-	public SSTableScanner(DataInput input, Map<String, AbstractType> converters, Descriptor.Version version) {
-		this(input, converters, -1, version);
-	}
-
-	public SSTableScanner(DataInput input,
-			Map<String, AbstractType> converters,
-			long end,
-			Descriptor.Version version) {
-		init(input, converters, end);
+	protected SSTableScanner(Descriptor.Version version) {
 		this.version = version;
+	}
+
+	public SSTableScanner(InputStream is, Descriptor.Version version) {
+		this(is, null, -1, version);
+	}
+
+	public SSTableScanner(InputStream is, Map<String, AbstractType> converters, Descriptor.Version version) {
+		this(is, converters, -1, version);
+	}
+
+	public SSTableScanner(InputStream is, Map<String, AbstractType> converters, long end, Descriptor.Version version) {
+		this.version = version;
+		init(is, converters, end);
 	}
 
 	public SSTableScanner(String filename) {
@@ -99,8 +102,7 @@ public class SSTableScanner extends SSTableReader implements Iterator<String> {
 	public SSTableScanner(String filename, Map<String, AbstractType> converters, long start, long end) {
 		try {
 			this.version = Descriptor.fromFilename(filename).version;
-			init(new DataInputStream(new BufferedInputStream(new FileInputStream(filename), 65536 * 10)), converters,
-					end);
+			init(new BufferedInputStream(new FileInputStream(filename), 65536 * 10), converters, end);
 			if (start != 0) {
 				skipUnsafe(start);
 				this.pos = start;
@@ -141,8 +143,8 @@ public class SSTableScanner extends SSTableReader implements Iterator<String> {
 		return hasMore();
 	}
 
-	protected void init(DataInput input, Map<String, AbstractType> converters, long end) {
-		this.input = input;
+	protected void init(InputStream is, Map<String, AbstractType> converters, long end) {
+		this.input = new DataInputStream(is);
 		if (converters != null) {
 			this.converters = converters;
 		}
@@ -176,6 +178,25 @@ public class SSTableScanner extends SSTableReader implements Iterator<String> {
 			input.readFully(b);
 			String key = keyConvertor.getString(ByteBuffer.wrap(b));
 			datasize = input.readLong() + keysize + 2 + 8;
+			// The indexScanner is here to check to make sure that we are at the
+			// correct place in the file.
+            String hexKey = BytesType.instance.getString(ByteBuffer.wrap(b));
+			if (!validateRow(hexKey, datasize) || this.pos + datasize > end) {
+				errorRowCount++;
+                str.append("{");
+                insertKey(str, key);
+                str.append("{");
+                insertKey(str, "deletedAt");
+                str.append(Long.MIN_VALUE);
+                str.append(", ");
+                insertKey(str, "columns");
+                str.append("[");
+                String msg = String.format("[\"error\",\"Bad Row\",0]");
+                str.append(msg);
+                str.append("]");
+                str.append("}}\n");
+                return str.toString();
+			}
 			this.pos += datasize;
 			int bfsize = 0;
 			int idxsize = 0;
@@ -209,8 +230,8 @@ public class SSTableScanner extends SSTableReader implements Iterator<String> {
 			int columnCount = input.readInt();
 			long columnsize = datasize - keysize - 2 /* byte for keysize */
 					- 8 /* long for data size */
-					- bfsize  /* int for bloom filter size */
-					- idxsize  /* int for index size */
+					- bfsize /* int for bloom filter size */
+					- idxsize /* int for index size */
 					- indexLengthSize /* 0 or 8 depending on promoted indexes */
 					- 4 /* local deletetion time */
 					- 8 /* marked for delete */
@@ -224,7 +245,18 @@ public class SSTableScanner extends SSTableReader implements Iterator<String> {
 			insertKey(str, "columns");
 			str.append("[");
 			if (maxColSize == -1 || columnsize < maxColSize) {
-				serializeColumns(str, columnCount, input);
+				try {
+                    serializeColumns(str, columnCount, input);
+				} catch (CorruptColumnException e) {
+					//the subsequent reading will fail if we aren't using an IndexedSSTableScanner,
+					//so in that case just throw the error
+					if (!(this instanceof IndexedSSTableScanner)) {
+						throw e;
+					}
+                    errorRowCount++;
+                    String msg = String.format("[\"error\",\"bad columns\",0]");
+                    str.append(msg);
+				}
 			} else {
 				errorRowCount++;
 				String msg = String.format("[\"error\",\"row too large: %,d bytes - limit %,d bytes\",0]", datasize,
@@ -282,8 +314,10 @@ public class SSTableScanner extends SSTableReader implements Iterator<String> {
 				}
 			} else if (atom instanceof RangeTombstone) {
 				// RangeTombstones need to be held so that we can handle them
-				// during reduce. Currently aegisthus doesn't handle this well as we
-				// aren't handling columns in the order they should be sorted. We will
+				// during reduce. Currently aegisthus doesn't handle this well
+				// as we
+				// aren't handling columns in the order they should be sorted.
+				// We will
 				// have to change that in the near future.
 				/*
 				 * RangeTombstone rt = (RangeTombstone) atom; sb.append("[\"");
@@ -299,7 +333,10 @@ public class SSTableScanner extends SSTableReader implements Iterator<String> {
 	}
 
 	private String convertColumnName(ByteBuffer bb) {
-		return columnNameConvertor.getString(bb).replaceAll("[\\s\\p{Cntrl}]", " ").replace("\\", "\\\\").replace("\"", "\\\"");
+		return columnNameConvertor.getString(bb)
+				.replaceAll("[\\s\\p{Cntrl}]", " ")
+				.replace("\\", "\\\\")
+				.replace("\"", "\\\"");
 	}
 
 	public long getErrorRowCount() {
@@ -308,5 +345,9 @@ public class SSTableScanner extends SSTableReader implements Iterator<String> {
 
 	public void setMaxColSize(long maxColSize) {
 		this.maxColSize = maxColSize;
+	}
+
+	protected boolean validateRow(String key, long datasize) {
+		return true;
 	}
 }

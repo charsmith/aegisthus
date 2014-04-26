@@ -28,7 +28,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 
-import com.netflix.aegisthus.input.AegSplit;
+import com.netflix.aegisthus.input.splits.AegSplit;
 import com.netflix.aegisthus.io.commitlog.CommitLogScanner;
 
 public class CommitLogRecordReader extends AegisthusRecordReader {

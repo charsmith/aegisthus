@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.netflix.aegisthus.input;
+package com.netflix.aegisthus.input.splits;
 
 import java.io.BufferedInputStream;
 import java.io.DataInput;
@@ -25,10 +25,10 @@ import java.util.Map;
 
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.TypeParser;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.SyntaxException;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
@@ -38,8 +38,6 @@ import org.apache.hadoop.io.WritableUtils;
 import org.apache.hadoop.mapreduce.InputSplit;
 
 import com.google.common.collect.Maps;
-import com.netflix.aegisthus.io.sstable.compression.CompressionInputStream;
-import com.netflix.aegisthus.io.sstable.compression.CompressionMetadata;
 
 @SuppressWarnings("rawtypes")
 public class AegSplit extends InputSplit implements Writable {
@@ -50,47 +48,21 @@ public class AegSplit extends InputSplit implements Writable {
 	}
 
 	protected Map<String, AbstractType> convertors = null;
-	protected boolean compressed;
-	protected Path compressedPath;
 	protected long end;
 	protected String[] hosts;
 	protected Path path;
 	protected long start;
 	protected Type type;
-    protected CompressionMetadata compressionMetadata = null;
 
 	public AegSplit() {
 	}
 
-	public AegSplit(Path path,
-					long start,
-					long length,
-					String[] hosts,
-					Map<String, AbstractType> convertors,
-					boolean compressed,
-					Path compressedPath) {
-		this(path, start, length, hosts, convertors);
-		this.compressed = compressed;
-		this.compressedPath = compressedPath;
-	}
-
 	public AegSplit(Path path, long start, long length, String[] hosts, Map<String, AbstractType> convertors) {
-		this.type = Type.sstable;
-		this.path = path;
-		this.start = start;
-		this.end = length + start;
-		LOG.info(String.format("start: %d, end: %d", start, end));
-		this.hosts = hosts;
-		this.convertors = convertors;
+		this(path, start, length, hosts, Type.sstable, convertors);
 	}
 
 	public AegSplit(Path path, long start, long length, String[] hosts, Type type, Map<String, AbstractType> convertors) {
-		this.type = type;
-		this.path = path;
-		this.start = start;
-		this.end = length + start;
-		LOG.info(String.format("start: %d, end: %d", start, end));
-		this.hosts = hosts;
+		this(path, start, length, hosts, type);
 		this.convertors = convertors;
 	}
 
@@ -103,10 +75,6 @@ public class AegSplit extends InputSplit implements Writable {
 		this.hosts = hosts;
 	}
 
-	public Path getCompressedPath() {
-		return compressedPath;
-	}
-
 	public Map<String, AbstractType> getConvertors() {
 		return convertors;
 	}
@@ -114,12 +82,16 @@ public class AegSplit extends InputSplit implements Writable {
 	public long getEnd() {
 		return end;
 	}
+	
+	public long getDataEnd() {
+		return end;
+	}
 
 	@Override
 	public long getLength() {
 		return end - start;
 	}
-
+	
 	@Override
 	public String[] getLocations() throws IOException, InterruptedException {
 		return hosts;
@@ -137,25 +109,15 @@ public class AegSplit extends InputSplit implements Writable {
 		return type;
 	}
 
-	public boolean isCompressed() {
-		return compressed;
-	}
-	
-	public CompressionMetadata getCompressionMetadata() {
-		return compressionMetadata;
-	}
-
 	public InputStream getInput(Configuration conf) throws IOException {
 		FileSystem fs = path.getFileSystem(conf);
 		FSDataInputStream fileIn = fs.open(path);
 		InputStream dis = new DataInputStream(new BufferedInputStream(fileIn));
-		if (compressed) {
-			FSDataInputStream cmIn = fs.open(compressedPath);
-			compressionMetadata = new CompressionMetadata(new BufferedInputStream(cmIn), end - start);
-			dis = new CompressionInputStream(dis, compressionMetadata);
-			end = compressionMetadata.getDataLength();
-		}
 		return dis;
+	}
+	
+	public InputStream getIndexInput(Configuration conf) throws IOException {
+		return null;
 	}
 
 	@Override
@@ -163,10 +125,6 @@ public class AegSplit extends InputSplit implements Writable {
 		end = in.readLong();
 		hosts = WritableUtils.readStringArray(in);
 		path = new Path(WritableUtils.readString(in));
-		compressed = in.readBoolean();
-		if (compressed) {
-			compressedPath = new Path(WritableUtils.readString(in));
-		}
 		start = in.readLong();
 		type = WritableUtils.readEnum(in, Type.class);
 		int size = in.readInt();
@@ -190,10 +148,6 @@ public class AegSplit extends InputSplit implements Writable {
 		out.writeLong(end);
 		WritableUtils.writeStringArray(out, hosts);
 		WritableUtils.writeString(out, path.toUri().toString());
-		out.writeBoolean(compressed);
-		if (compressed) {
-			WritableUtils.writeString(out, compressedPath.toUri().toString());
-		}
 		out.writeLong(start);
 		WritableUtils.writeEnum(out, type);
 		if (convertors != null) {

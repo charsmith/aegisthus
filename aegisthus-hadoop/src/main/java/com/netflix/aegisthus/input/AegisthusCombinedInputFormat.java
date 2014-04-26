@@ -11,6 +11,8 @@ import org.apache.hadoop.mapreduce.JobContext;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.netflix.aegisthus.input.splits.AegCombinedSplit;
+import com.netflix.aegisthus.input.splits.AegSplit;
 
 /**
  * This class takes the splits created by the AegisthusInputFormat and combines
@@ -30,7 +32,7 @@ public class AegisthusCombinedInputFormat extends AegisthusInputFormat {
 		
 		top: for (InputSplit split : splits) {
 			AegSplit aegSplit = (AegSplit) split;
-			switch (aegSplit.type) {
+			switch (aegSplit.getType()) {
 			case sstable:
 				cnt++;
 				if (aegSplit.getLength() >= maxSplitSize) {

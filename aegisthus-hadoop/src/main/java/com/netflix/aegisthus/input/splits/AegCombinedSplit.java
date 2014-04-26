@@ -1,4 +1,4 @@
-package com.netflix.aegisthus.input;
+package com.netflix.aegisthus.input.splits;
 
 import java.io.DataInput;
 import java.io.DataOutput;

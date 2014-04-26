@@ -16,7 +16,6 @@
 package com.netflix.aegisthus.input;
 
 import java.io.BufferedInputStream;
-import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
@@ -26,6 +25,7 @@ import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.TypeParser;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.SyntaxException;
+import org.apache.cassandra.utils.Pair;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.BlockLocation;
@@ -42,11 +42,15 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.netflix.aegisthus.input.AegSplit.Type;
 import com.netflix.aegisthus.input.readers.CombineSSTableReader;
 import com.netflix.aegisthus.input.readers.CommitLogRecordReader;
 import com.netflix.aegisthus.input.readers.JsonRecordReader;
 import com.netflix.aegisthus.input.readers.SSTableRecordReader;
+import com.netflix.aegisthus.input.splits.AegCombinedSplit;
+import com.netflix.aegisthus.input.splits.AegCompressedSplit;
+import com.netflix.aegisthus.input.splits.AegIndexedSplit;
+import com.netflix.aegisthus.input.splits.AegSplit;
+import com.netflix.aegisthus.input.splits.AegSplit.Type;
 import com.netflix.aegisthus.io.sstable.OffsetScanner;
 import com.netflix.aegisthus.io.sstable.SSTableScanner;
 
@@ -95,7 +99,7 @@ public class AegisthusInputFormat extends FileInputFormat<Text, Text> {
 				throw new IOException(e);
 			} catch (SyntaxException e) {
 				throw new IOException(e);
-            }
+			}
 		}
 		conversion = job.getConfiguration().get(COLUMN_TYPE);
 		LOG.info(COLUMN_TYPE + ": " + conversion);
@@ -106,7 +110,7 @@ public class AegisthusInputFormat extends FileInputFormat<Text, Text> {
 				throw new IOException(e);
 			} catch (SyntaxException e) {
 				throw new IOException(e);
-            }
+			}
 		}
 
 		if (convertors.size() == 0) {
@@ -132,36 +136,36 @@ public class AegisthusInputFormat extends FileInputFormat<Text, Text> {
 
 			long bytesRemaining = length;
 
-			Iterator<Long> scanner = null;
+			Iterator<Pair<Long, Long>> scanner = null;
 			Path compressionPath = new Path(path.getParent(), path.getName().replaceAll("-Data.db",
-																						"-CompressionInfo.db"));
+					"-CompressionInfo.db"));
 			if (!fs.exists(compressionPath)) {
 				// Only initialize if we are going to have more than a single
 				// split
+                Path indexPath = null;
 				if (fuzzySplit < length) {
-					Path indexPath = new Path(path.getParent(), path.getName().replaceAll("-Data.db", "-Index.db"));
+                    indexPath = new Path(path.getParent(), path.getName().replaceAll("-Data.db", "-Index.db"));
 					if (!fs.exists(indexPath)) {
 						fuzzySplit = length;
 					} else {
 						FSDataInputStream fileIn = fs.open(indexPath);
-						scanner = new OffsetScanner(new DataInputStream(new BufferedInputStream(fileIn)), indexPath.getName());
+						scanner = new OffsetScanner(new BufferedInputStream(fileIn), indexPath.getName());
 					}
 				}
 				long splitStart = 0;
 				while (splitStart + fuzzySplit < length && scanner.hasNext()) {
 					long splitSize = 0;
+					long indexOffset = 0;
 					// The scanner returns an offset from the start of the file.
 					while (splitSize < maxSplitSize && scanner.hasNext()) {
-						splitSize = scanner.next() - splitStart;
+						Pair<Long, Long> pair = scanner.next();
+						splitSize = pair.left - splitStart;
+						indexOffset = pair.right;
 					}
 					int blkIndex = getBlockIndex(blkLocations, splitStart + (splitSize / 2));
 					LOG.info("split path: " + path.getName() + ":" + splitStart + ":" + splitSize);
-					splits
-							.add(new AegSplit(	path,
-												splitStart,
-												splitSize,
-												blkLocations[blkIndex].getHosts(),
-												convertors));
+					splits.add(new AegIndexedSplit(path, splitStart, splitSize, blkLocations[blkIndex].getHosts(),
+							convertors, indexPath, indexOffset));
 					bytesRemaining -= splitSize;
 					splitStart += splitSize;
 				}
@@ -169,13 +173,13 @@ public class AegisthusInputFormat extends FileInputFormat<Text, Text> {
 
 			if (bytesRemaining != 0) {
 				LOG.info("end path: " + path.getName() + ":" + (length - bytesRemaining) + ":" + bytesRemaining);
-				splits.add(new AegSplit(path,
-										length - bytesRemaining,
-										bytesRemaining,
-										blkLocations[blkLocations.length - 1].getHosts(),
-										convertors,
-										fs.exists(compressionPath),
-										compressionPath));
+				if (fs.exists(compressionPath)) {
+					splits.add(new AegCompressedSplit(path, length - bytesRemaining, bytesRemaining,
+							blkLocations[blkLocations.length - 1].getHosts(), convertors, compressionPath));
+				} else {
+					splits.add(new AegSplit(path, length - bytesRemaining, bytesRemaining,
+							blkLocations[blkLocations.length - 1].getHosts(), convertors));
+				}
 			}
 		} else {
 			LOG.info("skipping zero length file: " + path.toString());
@@ -193,20 +197,14 @@ public class AegisthusInputFormat extends FileInputFormat<Text, Text> {
 				addSSTableSplit(splits, job, file);
 			} else if (name.startsWith("CommitLog")) {
 				LOG.info(String.format("adding %s as a CommitLog split", file.getPath().toUri().toString()));
-				BlockLocation[] blkLocations = file
-						.getPath()
+				BlockLocation[] blkLocations = file.getPath()
 						.getFileSystem(job.getConfiguration())
 						.getFileBlockLocations(file, 0, file.getLen());
-				splits.add(new AegSplit(file.getPath(),
-										0,
-										file.getLen(),
-										blkLocations[0].getHosts(),
-										Type.commitlog,
-										convertors));
+				splits.add(new AegSplit(file.getPath(), 0, file.getLen(), blkLocations[0].getHosts(), Type.commitlog,
+						convertors));
 			} else {
 				LOG.info(String.format("adding %s as a json split", file.getPath().toUri().toString()));
-				BlockLocation[] blkLocations = file
-						.getPath()
+				BlockLocation[] blkLocations = file.getPath()
 						.getFileSystem(job.getConfiguration())
 						.getFileBlockLocations(file, 0, file.getLen());
 				splits.add(new AegSplit(file.getPath(), 0, file.getLen(), blkLocations[0].getHosts(), Type.json));

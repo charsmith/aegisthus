@@ -18,6 +18,7 @@ package com.netflix.aegisthus.io.commitlog;
 import java.io.DataInput;
 import java.io.DataInputStream;
 import java.io.IOError;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
@@ -41,8 +42,8 @@ public class CommitLogScanner extends SSTableScanner {
 	protected StringBuilder sb;
 
 	@SuppressWarnings("rawtypes")
-	public CommitLogScanner(DataInput di, Map<String, AbstractType> convertors, Descriptor.Version version) {
-		super(di, convertors, -1, version);
+	public CommitLogScanner(InputStream is, Map<String, AbstractType> convertors, Descriptor.Version version) {
+		super(is, convertors, -1, version);
 		cache = Lists.newLinkedList();
 	}
 

@@ -24,7 +24,7 @@ import java.util.zip.GZIPInputStream;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 
-import com.netflix.aegisthus.input.AegSplit;
+import com.netflix.aegisthus.input.splits.AegSplit;
 
 public class JsonRecordReader extends AegisthusRecordReader {
 	protected BufferedReader reader;
