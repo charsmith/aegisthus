@@ -18,6 +18,7 @@ package com.netflix.aegisthus.io.commitlog;
 import java.io.DataInput;
 import java.io.DataInputStream;
 import java.io.IOError;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -25,44 +26,37 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.cassandra.db.ColumnFamily;
-import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.util.FastByteArrayInputStream;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
+import rx.Subscriber;
+
 import com.google.common.collect.Lists;
 import com.netflix.aegisthus.io.sstable.SSTableScanner;
+import com.netflix.aegisthus.message.AegisthusProtos.Column;
 
 /**
  * This code is experimental.
  */
+@SuppressWarnings("unused")
 public class CommitLogScanner extends SSTableScanner {
-	protected List<String> cache;
-	protected StringBuilder sb;
-
-	@SuppressWarnings("rawtypes")
-	public CommitLogScanner(InputStream is, Map<String, AbstractType> convertors, Descriptor.Version version) {
-		super(is, convertors, -1, version);
-		cache = Lists.newLinkedList();
+    int columnFamilyId;
+	public CommitLogScanner(InputStream is, Descriptor.Version version, int columnFamilyId) {
+		super(is, -1, version);
+		this.columnFamilyId = columnFamilyId;
 	}
 
-	@SuppressWarnings("unused")
-	public String next(int filter) {
+    protected void deserialize(Subscriber<? super Column> subscriber) {
 		int serializedSize;
-		if (cache.size() > 0) {
-			// if we are here we are reading rows that we already reported the
-			// size of.
-			datasize = 0;
-			return cache.remove(0);
-		}
 		try {
 			outer: while (true) {
 				serializedSize = input.readInt();
 				if (serializedSize == 0) {
-					return null;
+					return;
 				}
-				long claimedSizeChecksum = input.readLong();
+                long claimedSizeChecksum = input.readLong();
 				byte[] buffer = new byte[(int) (serializedSize * 1.2)];
 				input.readFully(buffer, 0, serializedSize);
 				long claimedChecksum = input.readLong();
@@ -78,7 +72,7 @@ public class CommitLogScanner extends SSTableScanner {
 				int size = ris.readInt();
 				for (int i = 0; i < size; ++i) {
 					Integer cfid = Integer.valueOf(ris.readInt());
-					if (filter >= 0 && cfid != filter) {
+					if (columnFamilyId >= 0 && cfid != columnFamilyId) {
 						continue outer;
 					}
 					if (!ris.readBoolean()) {
@@ -87,29 +81,12 @@ public class CommitLogScanner extends SSTableScanner {
 					cfid = Integer.valueOf(ris.readInt());
 					int localDeletionTime = ris.readInt();
 					long markedForDeleteAt = ris.readLong();
-					sb = new StringBuilder();
-					sb.append("{");
-					insertKey(sb, BytesType.instance.getString(key));
-					sb.append("{");
-					insertKey(sb, "deletedAt");
-					sb.append(markedForDeleteAt);
-					sb.append(", ");
-					insertKey(sb, "columns");
-					sb.append("[");
 					int columns = ris.readInt();
-					serializeColumns(sb, columns, ris);
-					sb.append("]");
-					sb.append("}}");
-					cache.add(sb.toString());
-				}
-				if (cache.size() > 0) {
-					return cache.remove(0);
-				} else {
-					return null;
+					serializeColumns(subscriber, key.array(), markedForDeleteAt, columns, ris);
 				}
 			}
-		} catch (Exception e) {
-			throw new IOError(e);
+		} catch (IOException e) {
+		    subscriber.onError(e);
 		}
 	}
 }

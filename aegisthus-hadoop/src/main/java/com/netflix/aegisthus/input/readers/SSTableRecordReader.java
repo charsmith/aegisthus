@@ -20,6 +20,7 @@ import java.io.DataInputStream;
 import java.io.IOError;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Iterator;
 
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.commons.logging.Log;
@@ -28,98 +29,84 @@ import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.TaskInputOutputContext;
 
+import rx.Observable;
+import rx.exceptions.OnErrorThrowable;
+import rx.functions.Func1;
+
 import com.netflix.aegisthus.input.splits.AegIndexedSplit;
 import com.netflix.aegisthus.input.splits.AegSplit;
 import com.netflix.aegisthus.io.sstable.IndexedSSTableScanner;
 import com.netflix.aegisthus.io.sstable.SSTableScanner;
+import com.netflix.aegisthus.io.writable.ColumnWritable;
+import com.netflix.aegisthus.message.AegisthusProtos.Column;
 
 public class SSTableRecordReader extends AegisthusRecordReader {
-	private static final Log LOG = LogFactory.getLog(SSTableRecordReader.class);
-	private SSTableScanner scanner;
-	private boolean outputFile = false;
-	private String filename = null;
-	private long errorRows = 0;
-	@SuppressWarnings("rawtypes")
-	private TaskInputOutputContext context = null;
+    private static final Log LOG = LogFactory.getLog(SSTableRecordReader.class);
+    private SSTableScanner scanner;
+    private String filename = null;
+    private Iterator<Column> iterator = null;
 
-	@Override
-	public void close() throws IOException {
-		super.close();
-		if (scanner != null) {
-			scanner.close();
-		}
-	}
-
-	@SuppressWarnings("rawtypes")
-	@Override
-	public void initialize(InputSplit inputSplit, TaskAttemptContext ctx) throws IOException, InterruptedException {
-		AegSplit split = (AegSplit) inputSplit;
-
-		start = split.getStart();
-		// TODO: This has a side effect of setting compressionmetadata. remove
-		// this.
-		InputStream is = split.getInput(ctx.getConfiguration());
-		end = split.getDataEnd();
-		outputFile = ctx.getConfiguration().getBoolean("aegsithus.debug.file", false);
-		filename = split.getPath().toUri().toString();
-
-		LOG.info(String.format("File: %s", split.getPath().toUri().getPath()));
-		LOG.info("Start: " + start);
-		LOG.info("End: " + end);
-		if (ctx instanceof TaskInputOutputContext) {
-			context = (TaskInputOutputContext) ctx;
-		}
-
-		try {
-			DataInput indexInput = null;
-			if (inputSplit instanceof AegIndexedSplit) {
-				AegIndexedSplit indexedSplit = (AegIndexedSplit) inputSplit;
-				indexInput = new DataInputStream(indexedSplit.getIndexInput(ctx.getConfiguration()));
-				scanner = new IndexedSSTableScanner(is, split.getConvertors(), end, Descriptor.fromFilename(filename).version,
-						indexInput);
-			} else {
-				scanner = new SSTableScanner(is, split.getConvertors(), end, Descriptor.fromFilename(filename).version);
-			}
-			if (ctx.getConfiguration().get("aegisthus.maxcolsize") != null) {
-				scanner.setMaxColSize(ctx.getConfiguration().getLong("aegisthus.maxcolsize", -1L));
-				LOG.info(String.format("aegisthus.maxcolsize - %d",
-						ctx.getConfiguration().getLong("aegisthus.maxcolsize", -1L)));
-			}
-			scanner.skipUnsafe(start);
-			this.pos = start;
-		} catch (IOException e) {
-			throw new IOError(e);
-		}
-	}
-
-	@Override
-	public boolean nextKeyValue() throws IOException, InterruptedException {
-		if (pos >= end) {
-			return false;
-		}
-		String json = null;
-        try {
-            json = scanner.next();
-        } catch (IOError e) {
-            LOG.error("bad row", e);
-            context.getCounter("aegisthus", "IOError").increment(1L);
+    @Override
+    public void close() throws IOException {
+        super.close();
+        if (scanner != null) {
+            scanner.close();
         }
-		if (json == null) {
-		    return false;
-		}
-		pos += scanner.getDatasize();
-		json = json.trim();
-		if (outputFile) {
-			key.set(filename);
-		} else {
-			// a quick hack to pull out the rowkey from the json.
-			key.set(json.substring(2, json.indexOf(':') - 1));
-		}
-		if (context != null && scanner.getErrorRowCount() > errorRows) {
-			errorRows++;
-			context.getCounter("aegisthus", "rowsTooBig").increment(1L);
-		}
-		value.set(json);
-		return true;
-	}
+    }
+
+    @SuppressWarnings("rawtypes")
+    @Override
+    public void initialize(InputSplit inputSplit, final TaskAttemptContext ctx) throws IOException,
+            InterruptedException {
+        AegSplit split = (AegSplit) inputSplit;
+
+        start = split.getStart();
+        InputStream is = split.getInput(ctx.getConfiguration());
+        end = split.getDataEnd();
+        filename = split.getPath().toUri().toString();
+
+        LOG.info(String.format("File: %s", split.getPath().toUri().getPath()));
+        LOG.info("Start: " + start);
+        LOG.info("End: " + end);
+
+        try {
+            DataInput indexInput = null;
+            if (inputSplit instanceof AegIndexedSplit) {
+                AegIndexedSplit indexedSplit = (AegIndexedSplit) inputSplit;
+                indexInput = new DataInputStream(indexedSplit.getIndexInput(ctx.getConfiguration()));
+                scanner = new IndexedSSTableScanner(is, end, Descriptor.fromFilename(filename).version, indexInput);
+            } else {
+                scanner = new SSTableScanner(is, end, Descriptor.fromFilename(filename).version);
+            }
+            scanner.skipUnsafe(start);
+            this.pos = start;
+            iterator = scanner.observable().onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends Column>>() {
+                @Override
+                public Observable<? extends Column> call(OnErrorThrowable onErrorThrowable) {
+                    LOG.error("failure deserializing", onErrorThrowable);
+                    if (ctx instanceof TaskInputOutputContext) {
+                        ((TaskInputOutputContext) ctx).getCounter("aegisthus",
+                                onErrorThrowable.getCause().getClass().getSimpleName()).increment(1L);
+                    }
+                    return Observable.empty();
+                }
+            })
+                    .toBlockingObservable()
+                    .toIterable()
+                    .iterator();
+        } catch (IOException e) {
+            throw new IOError(e);
+        }
+    }
+
+    @Override
+    public boolean nextKeyValue() throws IOException, InterruptedException {
+        if (!iterator.hasNext()) {
+            return false;
+        }
+        Column column = iterator.next();
+        key.set(column.getRowKey().toString());
+        value = new ColumnWritable(column);
+        return true;
+    }
 }

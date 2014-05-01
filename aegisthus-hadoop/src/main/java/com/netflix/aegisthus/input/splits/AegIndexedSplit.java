@@ -6,9 +6,7 @@ import java.io.DataInputStream;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Map;
 
-import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -22,7 +20,6 @@ import org.apache.hadoop.io.WritableUtils;
  * track of the rows while iterating over the split. When we hit corrupt rows,
  * the index can be used to reposition the stream to the correct place.
  **/
-@SuppressWarnings("rawtypes")
 public class AegIndexedSplit extends AegSplit {
 	private static final Log LOG = LogFactory.getLog(AegIndexedSplit.class);
 
@@ -35,23 +32,9 @@ public class AegIndexedSplit extends AegSplit {
 			long start,
 			long length,
 			String[] hosts,
-			Map<String, AbstractType> convertors,
 			Path indexPath,
 			long indexStart) {
-		super(path, start, length, hosts, convertors);
-		this.indexPath = indexPath;
-		this.indexStart = indexStart;
-	}
-
-	public AegIndexedSplit(Path path,
-			long start,
-			long length,
-			String[] hosts,
-			Type type,
-			Map<String, AbstractType> convertors,
-			Path indexPath,
-			long indexStart) {
-		super(path, start, length, hosts, type, convertors);
+		super(path, start, length, hosts);
 		this.indexPath = indexPath;
 		this.indexStart = indexStart;
 	}

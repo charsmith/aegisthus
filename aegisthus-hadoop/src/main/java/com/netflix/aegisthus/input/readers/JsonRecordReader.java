@@ -60,7 +60,8 @@ public class JsonRecordReader extends AegisthusRecordReader {
 		pos += line.length();
 		String[] text = line.split("\t", 2);
 		key.set(text[0]);
-		value.set(text[1]);
+		//TODO: really need to actually handle this
+		//value.set(text[1]);
 		return true;
 	}
 

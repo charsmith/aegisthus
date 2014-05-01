@@ -20,20 +20,32 @@ import java.io.DataInputStream;
 import java.io.IOError;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Iterator;
 
 import org.apache.cassandra.io.sstable.Descriptor;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.mapreduce.TaskInputOutputContext;
+
+import rx.Observable;
+import rx.exceptions.OnErrorThrowable;
+import rx.functions.Func1;
 
 import com.netflix.aegisthus.input.splits.AegSplit;
 import com.netflix.aegisthus.io.commitlog.CommitLogScanner;
+import com.netflix.aegisthus.io.writable.ColumnWritable;
+import com.netflix.aegisthus.message.AegisthusProtos.Column;
 
 public class CommitLogRecordReader extends AegisthusRecordReader {
+    private static final Log LOG = LogFactory.getLog(AegisthusRecordReader.class);
     protected CommitLogScanner scanner;
     protected int cfId;
+    private Iterator<Column> iterator = null;
 
     @Override
     public void close() throws IOException {
@@ -43,8 +55,9 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
         }
     }
 
+    @SuppressWarnings("rawtypes")
     @Override
-    public void initialize(InputSplit inputSplit, TaskAttemptContext ctx) throws IOException, InterruptedException {
+    public void initialize(InputSplit inputSplit, final TaskAttemptContext ctx) throws IOException, InterruptedException {
         AegSplit split = (AegSplit) inputSplit;
 
         start = split.getStart();
@@ -60,9 +73,23 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
             FileSystem fs = file.getFileSystem(ctx.getConfiguration());
             FSDataInputStream fileIn = fs.open(split.getPath());
             InputStream dis = new BufferedInputStream(fileIn);
-            scanner = new CommitLogScanner(new DataInputStream(dis), split.getConvertors(),
-                    Descriptor.fromFilename(split.getPath().getName()).version);
+            scanner = new CommitLogScanner(new DataInputStream(dis),
+                    Descriptor.fromFilename(split.getPath().getName()).version, cfId);
             this.pos = start;
+            iterator = scanner.observable().onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends Column>>() {
+                @Override
+                public Observable<? extends Column> call(OnErrorThrowable onErrorThrowable) {
+                    LOG.error("failure deserializing", onErrorThrowable);
+                    if (ctx instanceof TaskInputOutputContext) {
+                        ((TaskInputOutputContext) ctx).getCounter("aegisthus",
+                                onErrorThrowable.getCause().getClass().getSimpleName()).increment(1L);
+                    }
+                    return Observable.empty();
+                }
+            })
+                    .toBlockingObservable()
+                    .toIterable()
+                    .iterator();
         } catch (IOException e) {
             throw new IOError(e);
         }
@@ -70,17 +97,12 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
 
     @Override
     public boolean nextKeyValue() throws IOException, InterruptedException {
-        String line = scanner.next();
-        if (line == null) {
+        if (!iterator.hasNext()) {
             return false;
         }
-        pos += scanner.getDatasize();
-        String[] text = line.split("\t", 2);
-        if (text[0].charAt(0) == '{') {
-            text[0] = text[0].substring(2, text[0].length() - 1);
-        }
-        key.set(text[0]);
-        value.set(text[1]);
+        Column column = iterator.next();
+        key.set(column.getRowKey().toString());
+        value = new ColumnWritable(column);
         return true;
     }
 

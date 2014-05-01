@@ -47,7 +47,7 @@ public class CombineSSTableReader extends AegisthusRecordReader {
 		}
 		if (resp == true) {
 			key.set(reader.key);
-			value.set(reader.value);
+			value = reader.value;
 		}
 		return resp;
 	}

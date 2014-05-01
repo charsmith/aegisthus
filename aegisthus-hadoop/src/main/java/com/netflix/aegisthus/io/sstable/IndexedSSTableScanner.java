@@ -20,14 +20,11 @@ import java.io.DataInput;
 import java.io.IOError;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Map;
 
-import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.io.sstable.Descriptor.Version;
 import org.apache.cassandra.utils.Pair;
 import org.apache.commons.io.input.CountingInputStream;
 
-@SuppressWarnings("rawtypes")
 public class IndexedSSTableScanner extends SSTableScanner {
 	private IndexScanner indexScanner = null;
 	private Pair<String, Long> curRow = null;
@@ -36,14 +33,12 @@ public class IndexedSSTableScanner extends SSTableScanner {
 	private boolean checked = false;
 
 	public IndexedSSTableScanner(InputStream is,
-			Map<String, AbstractType> converters,
 			long end,
 			Version version,
 			DataInput indexInput) {
-		super(version);
+		super(is, end, version);
 		this.is = new CountingInputStream(is);
 		this.indexScanner = new IndexScanner(indexInput, version);
-		init(this.is, converters, end);
 		this.nextRow = this.indexScanner.next();
 	}
 
@@ -65,18 +60,6 @@ public class IndexedSSTableScanner extends SSTableScanner {
             }
 	    }
         checked = true;
-	}
-	@Override
-    public boolean hasNext() {
-	    checkPosition();
-        return super.hasNext();
-    }
-
-	@Override
-	public String next() {
-	    checkPosition();
-	    checked = false;
-		return super.next();
 	}
 
     @Override

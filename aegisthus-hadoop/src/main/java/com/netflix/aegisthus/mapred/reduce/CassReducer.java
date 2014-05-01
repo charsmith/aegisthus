@@ -16,96 +16,97 @@
 package com.netflix.aegisthus.mapred.reduce;
 
 import java.io.IOException;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Reducer;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
+import com.netflix.aegisthus.io.writable.ColumnWritable;
+import com.netflix.aegisthus.message.AegisthusProtos.Column;
+import com.netflix.aegisthus.message.AegisthusProtos.Row;
 import com.netflix.aegisthus.tools.AegisthusSerializer;
 
-public class CassReducer extends Reducer<Text, Text, Text, Text> {
-	public static final AegisthusSerializer as = new AegisthusSerializer();
-	Set<Text> valuesSet = new HashSet<Text>();
+public class CassReducer extends Reducer<Text, ColumnWritable, Text, Text> {
+    public static final AegisthusSerializer as = new AegisthusSerializer();
 
-	@SuppressWarnings("unchecked")
-	protected Long getTimestamp(Map<String, Object> map, String columnName) {
-		return (Long) ((List<Object>) map.get(columnName)).get(2);
+    protected static void insertKey(StringBuilder sb, Object value) {
+        sb.append("\"");
+        sb.append(value);
+        sb.append("\": ");
+    }
+
+	protected static void serializeColumns(StringBuilder sb, List<Column> columns) {
+		int count = 0;
+		for (Column column: columns) {
+			if (count++ > 0) {
+				sb.append(", ");
+			}
+			sb.append("[");
+			sb.append("\"").append(((String) column.getColumnName().toStringUtf8()).replace("\\", "\\\\").replace("\"", "\\\"")).append("\"").append(",");
+			sb.append("\"").append(column.getValue().toStringUtf8()).append("\"").append(",");
+			sb.append(column.getTimestamp());
+			switch (column.getColumnType()) {
+            case COUNTER:
+				sb.append(",").append("\"c\"");
+                break;
+            case DELETED:
+				sb.append(",").append("\"d\"");
+				sb.append(",").append(column.getDeletedAt());
+                break;
+            case EXPIRING:
+				sb.append(",").append("\"e\"");
+				sb.append(",").append(column.getTtl());
+                break;
+            default:
+                break;
+            }
+			sb.append("]");
+		}
 	}
-	
-	public void reduce(Text key, Iterable<Text> values, Context ctx)
-			throws IOException, InterruptedException {
-		Map<String, Object> columns = null;
-		Object rowKey = null;
-		Long deletedAt = Long.MIN_VALUE;
-		// If we only have one distinct value we don't need to process
-		// differences, which is slow and should be avoided.
-		valuesSet.clear();
-		for (Text value :values) {
-			valuesSet.add(new Text(value));
-		}
-		if (valuesSet.size() == 1) {
-			ctx.write(key, new Text(valuesSet.iterator().next().toString()));
-			return;
-		}
-		for (Text val : valuesSet) {
-			Map<String, Object> map = as.deserialize(val.toString());
-			// The json has one key value pair, the data is always under the
-			// first key so do it once to save lookup
-			rowKey = map.remove(AegisthusSerializer.KEY);
-			Long curDeletedAt = (Long) map.remove(AegisthusSerializer.DELETEDAT);
-			if (curDeletedAt > deletedAt) {
-				deletedAt = curDeletedAt;
-			}
-			if (columns == null) {
-				columns = Maps.newTreeMap();
-				columns.putAll(map);
-			} else {
-				Set<String> columnNames = Sets.newHashSet();
-				columnNames.addAll(map.keySet());
-				columnNames.addAll(columns.keySet());
+    public static String serialize(Row row) {
+        StringBuilder str = new StringBuilder();
+        str.append("{");
+        insertKey(str, row.getRowKey().toStringUtf8());
+        str.append("{");
+        insertKey(str, "deletedAt");
+        str.append(row.getDeletedAt());
+        str.append(", ");
+        insertKey(str, "columns");
+        str.append("[");
+        serializeColumns(str, row.getColumnList());
+        str.append("]");
+        str.append("}}");
 
-				for (String columnName : columnNames) {
-					boolean oldKey = columns.containsKey(columnName);
-					boolean newKey = map.containsKey(columnName);
-					if (oldKey && newKey) {
-						if (getTimestamp(map, columnName) > getTimestamp(columns, columnName)) {
-							columns.put(columnName, map.get(columnName));
-						}
-					} else if (newKey) {
-						columns.put(columnName, map.get(columnName));
-					}
-				}
-			}
-		}
-		// When cassandra compacts it removes columns that are in deleted rows
-		// that are older than the deleted timestamp.
-		// we will duplicate this behavior. If the etl needs this data at some
-		// point we can change, but it is only available assuming
-		// cassandra hasn't discarded it.
-		List<String> delete = Lists.newArrayList();
-		for (Map.Entry<String, Object> e : columns.entrySet()) {
-			@SuppressWarnings("unchecked")
-			Long ts = (Long) ((List<Object>) e.getValue()).get(2);
-			if (ts < deletedAt) {
-				delete.add(e.getKey());
-			}
-		}
+        return str.toString();
+    }
 
-		for (String k : delete) {
-			columns.remove(k);
-		}
+    @Override
+    public void reduce(Text key, Iterable<ColumnWritable> values, Context ctx) throws IOException, InterruptedException {
+        Long deletedAt = Long.MIN_VALUE;
+        ColumnWritable currentColumn = null;
+        Row.Builder rowBuilder = Row.newBuilder();
+        for (ColumnWritable value : values) {
+            if (currentColumn == null) {
+                currentColumn = value;
+            } else if (!currentColumn.getColumn().getColumnName().equals(value.getColumn().getColumnName())) {
+                // TODO: handle what we do with a column and start over;
+                rowBuilder.addColumn(currentColumn.getColumn());
+                currentColumn = value;
+            } else if (currentColumn.getColumn().getTimestamp() < value.getColumn().getTimestamp()) {
+                currentColumn = value;
+            }
+            if (value.getColumn().getDeletedAt() > deletedAt) {
+                deletedAt = value.getColumn().getDeletedAt();
+            }
+        }
+        if (currentColumn != null) {
+            rowBuilder.addColumn(currentColumn.getColumn());
+        }
+        rowBuilder.setDeletedAt(deletedAt);
+        if (currentColumn != null) {
+            rowBuilder.setRowKey(currentColumn.getColumn().getRowKey());
+        }
 
-		columns.put(AegisthusSerializer.DELETEDAT, deletedAt);
-		columns.put(AegisthusSerializer.KEY, rowKey);
-		ctx.write(key, new Text(AegisthusSerializer.serialize(columns)));
-	
-	}
-
-
+        ctx.write(key, new Text(serialize(rowBuilder.build())));
+    }
 }

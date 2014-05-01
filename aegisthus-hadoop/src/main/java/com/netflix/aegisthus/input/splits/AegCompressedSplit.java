@@ -5,9 +5,7 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Map;
 
-import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
@@ -21,14 +19,12 @@ public class AegCompressedSplit extends AegSplit {
 	protected Path compressedPath;
 	protected CompressionMetadata compressionMetadata = null;
 
-	@SuppressWarnings("rawtypes")
 	public AegCompressedSplit(Path path,
 			long start,
 			long length,
 			String[] hosts,
-			Map<String, AbstractType> convertors,
 			Path compressedPath) {
-		super(path, start, length, hosts, convertors);
+		super(path, start, length, hosts);
 		this.compressedPath = compressedPath;
 	}
 
