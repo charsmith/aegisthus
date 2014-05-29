@@ -27,11 +27,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
-import org.apache.hadoop.mapreduce.TaskInputOutputContext;
-
-import rx.Observable;
-import rx.exceptions.OnErrorThrowable;
-import rx.functions.Func1;
 
 import com.netflix.aegisthus.input.splits.AegIndexedSplit;
 import com.netflix.aegisthus.input.splits.AegSplit;
@@ -54,7 +49,6 @@ public class SSTableRecordReader extends AegisthusRecordReader {
         }
     }
 
-    @SuppressWarnings("rawtypes")
     @Override
     public void initialize(InputSplit inputSplit, final TaskAttemptContext ctx) throws IOException,
             InterruptedException {
@@ -78,9 +72,11 @@ public class SSTableRecordReader extends AegisthusRecordReader {
             } else {
                 scanner = new SSTableScanner(is, end, Descriptor.fromFilename(filename).version);
             }
+            LOG.info("skipping to start: " + start);
             scanner.skipUnsafe(start);
             this.pos = start;
-            iterator = scanner.observable().onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends Column>>() {
+            LOG.info("Creating observable");
+            iterator = scanner.observable()/*.onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends Column>>() {
                 @Override
                 public Observable<? extends Column> call(OnErrorThrowable onErrorThrowable) {
                     LOG.error("failure deserializing", onErrorThrowable);
@@ -90,10 +86,11 @@ public class SSTableRecordReader extends AegisthusRecordReader {
                     }
                     return Observable.empty();
                 }
-            })
+            })*/
                     .toBlockingObservable()
                     .toIterable()
                     .iterator();
+            LOG.info("done initializing");
         } catch (IOException e) {
             throw new IOError(e);
         }
@@ -105,7 +102,7 @@ public class SSTableRecordReader extends AegisthusRecordReader {
             return false;
         }
         Column column = iterator.next();
-        key.set(column.getRowKey().toString());
+        key.set(column.getRowKey().toStringUtf8());
         value = new ColumnWritable(column);
         return true;
     }

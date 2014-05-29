@@ -154,19 +154,21 @@ public class AegisthusInputFormat extends FileInputFormat<Text, ColumnWritable> 
                     }
                 }
                 long splitStart = 0;
+                long indexOffset = 0;
+                long newIndexOffset = 0;
                 while (splitStart + fuzzySplit < length && scanner.hasNext()) {
                     long splitSize = 0;
-                    long indexOffset = 0;
                     // The scanner returns an offset from the start of the file.
                     while (splitSize < maxSplitSize && scanner.hasNext()) {
                         Pair<Long, Long> pair = scanner.next();
                         splitSize = pair.left - splitStart;
-                        indexOffset = pair.right;
+                        newIndexOffset = pair.right;
+                            
                     }
                     int blkIndex = getBlockIndex(blkLocations, splitStart + (splitSize / 2));
                     LOG.info("split path: " + path.getName() + ":" + splitStart + ":" + splitSize);
-                    splits.add(new AegIndexedSplit(path, splitStart, splitSize, blkLocations[blkIndex].getHosts(),
-                            indexPath, indexOffset));
+                    splits.add(new AegSplit(path, splitStart, splitSize, blkLocations[blkIndex].getHosts()));
+                    indexOffset = newIndexOffset;
                     bytesRemaining -= splitSize;
                     splitStart += splitSize;
                 }

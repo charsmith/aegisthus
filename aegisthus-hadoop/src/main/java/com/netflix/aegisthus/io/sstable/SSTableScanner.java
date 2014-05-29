@@ -20,6 +20,7 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.concurrent.Executors;
 
 import org.apache.cassandra.db.ColumnSerializer;
 import org.apache.cassandra.db.ColumnSerializer.CorruptColumnException;
@@ -31,6 +32,8 @@ import org.apache.cassandra.db.OnDiskAtom;
 import org.apache.cassandra.db.RangeTombstone;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.io.sstable.Descriptor;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 import rx.Observable.OnSubscribe;
 import rx.Subscriber;
@@ -40,19 +43,37 @@ import com.netflix.aegisthus.message.AegisthusProtos.Column;
 import com.netflix.aegisthus.message.AegisthusProtos.Column.ColumnType;
 
 public class SSTableScanner extends SSTableReader {
+    private static final Log LOG = LogFactory.getLog(SSTableScanner.class);
     public static final String COLUMN_NAME_KEY = "$$COLUMN_NAME_KEY$$";
     public static final String KEY = "$$ROW_KEY$$";
     private Descriptor.Version version = null;
     private final OnDiskAtom.Serializer serializer = new OnDiskAtom.Serializer(new ColumnSerializer());
 
+    public SSTableScanner(Descriptor.Version version) {
+        this.version = version;
+        this.end = -1;
+    }
+
+    public SSTableScanner(long end, Descriptor.Version version) {
+        this.version = version;
+        this.end = end;
+    }
+
     public SSTableScanner(InputStream is, Descriptor.Version version) {
-        this(is, -1, version);
+        this.version = version;
+        this.end = -1;
+        init(is);
     }
 
     public SSTableScanner(InputStream is, long end, Descriptor.Version version) {
         this.version = version;
-        this.input = new DataInputStream(is);
         this.end = end;
+        init(is);
+    }
+
+    protected void init(InputStream is) {
+        this.is = is;
+        this.input = new DataInputStream(is);
     }
 
     public void close() {
@@ -73,8 +94,10 @@ public class SSTableScanner extends SSTableReader {
     }
 
     protected void deserialize(Subscriber<? super Column> subscriber) {
+        LOG.info(String.format("current pos(%d) done (%s)", pos, hasMore() ? "has more" : "no more"));
         while (hasMore()) {
             try {
+                checkPosition(subscriber);
                 int keysize = input.readUnsignedShort();
                 byte[] rowKey = new byte[keysize];
                 input.readFully(rowKey);
@@ -83,8 +106,8 @@ public class SSTableScanner extends SSTableReader {
                 // the
                 // correct place in the file.
                 String hexKey = BytesType.instance.getString(ByteBuffer.wrap(rowKey));
-                if (!validateRow(hexKey, datasize) || (end != -1 && this.pos + datasize > end)) {
-                    subscriber.onError(new IOException("Bad Row"));
+                if (!validateRow(subscriber, hexKey, datasize) || (end != -1 && this.pos + datasize > end)) {
+                    continue;
                 }
                 this.pos += datasize;
                 int bfsize = 0;
@@ -120,8 +143,8 @@ public class SSTableScanner extends SSTableReader {
                 try {
                     serializeColumns(subscriber, rowKey, markedForDeleteAt, columnCount, input);
                 } catch (CorruptColumnException e) {
-                    //TODO: new exception that has row key
-                    subscriber.onError(e);
+                    // TODO: new exception that has row key
+                    subscriber.onError(new IOException(hexKey, e));
                 }
             } catch (IOException e) {
                 subscriber.onError(e);
@@ -174,17 +197,33 @@ public class SSTableScanner extends SSTableReader {
         }
     }
 
-    protected boolean validateRow(String key, long datasize) {
+    /**
+     * Here so that it can be overridden
+     */
+    protected boolean validateRow(Subscriber<? super Column> subscriber, String key, long datasize) {
         return true;
     }
 
+    /**
+     * Here so that it can be overridden
+     */
+    protected void checkPosition(Subscriber<? super Column> subscriber) throws IOException {
+    }
+
     public rx.Observable<Column> observable() {
-        return rx.Observable.create(new OnSubscribe<Column>() {
+        rx.Observable<Column> ret = rx.Observable.create(new OnSubscribe<Column>() {
             @Override
-            public void call(Subscriber<? super Column> subscriber) {
-                deserialize(subscriber);
-                subscriber.onCompleted();
+            public void call(final Subscriber<? super Column> subscriber) {
+                Executors.newSingleThreadExecutor().execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        deserialize(subscriber);
+                        subscriber.onCompleted();
+                    }
+                });
             }
         });
+        LOG.info("created observable");
+        return ret;
     }
 }

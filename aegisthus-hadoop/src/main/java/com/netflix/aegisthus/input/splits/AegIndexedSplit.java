@@ -56,7 +56,10 @@ public class AegIndexedSplit extends AegSplit {
 		FileSystem fs = indexPath.getFileSystem(conf);
 		FSDataInputStream fileIn = fs.open(indexPath);
 		InputStream dis = new DataInputStream(new BufferedInputStream(fileIn));
-		dis.skip(indexStart);
+		long skipped = 0;
+		while (skipped < indexStart) {
+            skipped += dis.skip(indexStart - skipped);
+		}
 		return dis;
 	}
 

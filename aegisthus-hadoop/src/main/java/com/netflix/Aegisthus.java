@@ -42,13 +42,14 @@ import org.apache.hadoop.util.ToolRunner;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.netflix.aegisthus.input.AegisthusInputFormat;
+import com.netflix.aegisthus.io.writable.ColumnWritable;
 import com.netflix.aegisthus.mapred.reduce.CassReducer;
 import com.netflix.aegisthus.tools.DirectoryWalker;
 
 public class Aegisthus extends Configured implements Tool {
-	public static class Map extends Mapper<Text, Text, Text, Text> {
+	public static class Map extends Mapper<Text, ColumnWritable, Text, ColumnWritable> {
 		@Override
-		protected void map(Text key, Text value, Context context) throws IOException, InterruptedException {
+		protected void map(Text key, ColumnWritable value, Context context) throws IOException, InterruptedException {
 			context.write(key, value);
 		}
 	}
@@ -130,7 +131,7 @@ public class Aegisthus extends Configured implements Tool {
 		}
 		job.setInputFormatClass(AegisthusInputFormat.class);
 		job.setMapOutputKeyClass(Text.class);
-		job.setMapOutputValueClass(Text.class);
+		job.setMapOutputValueClass(ColumnWritable.class);
 		job.setOutputFormatClass(TextOutputFormat.class);
 		job.setMapperClass(Map.class);
 		job.setReducerClass(CassReducer.class);

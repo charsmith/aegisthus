@@ -29,7 +29,7 @@ public class ColumnWritable implements Writable {
     @Override
     public void write(DataOutput arg0) throws IOException {
         byte[] bytes = column.toByteArray();
-        arg0.write(bytes.length);
+        arg0.writeInt(bytes.length);
         arg0.write(bytes);
     }
 
@@ -40,5 +40,4 @@ public class ColumnWritable implements Writable {
     public void setColumn(Column column) {
         this.column = column;
     }
-
 }

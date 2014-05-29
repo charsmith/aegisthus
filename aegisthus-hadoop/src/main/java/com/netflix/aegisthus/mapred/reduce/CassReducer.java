@@ -64,47 +64,46 @@ public class CassReducer extends Reducer<Text, ColumnWritable, Text, Text> {
 		}
 	}
     public static String serialize(Row row) {
-        StringBuilder str = new StringBuilder();
-        str.append("{");
-        insertKey(str, row.getRowKey().toStringUtf8());
-        str.append("{");
-        insertKey(str, "deletedAt");
-        str.append(row.getDeletedAt());
-        str.append(", ");
-        insertKey(str, "columns");
-        str.append("[");
-        serializeColumns(str, row.getColumnList());
-        str.append("]");
-        str.append("}}");
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        insertKey(sb, row.getRowKey().toStringUtf8());
+        sb.append("{");
+        insertKey(sb, "deletedAt");
+        sb.append(row.getDeletedAt());
+        sb.append(", ");
+        insertKey(sb, "columns");
+        sb.append("[");
+        serializeColumns(sb, row.getColumnList());
+        sb.append("]");
+        sb.append("}}");
 
-        return str.toString();
+        return sb.toString();
     }
 
     @Override
     public void reduce(Text key, Iterable<ColumnWritable> values, Context ctx) throws IOException, InterruptedException {
         Long deletedAt = Long.MIN_VALUE;
-        ColumnWritable currentColumn = null;
+        Column currentColumn = null;
         Row.Builder rowBuilder = Row.newBuilder();
         for (ColumnWritable value : values) {
             if (currentColumn == null) {
-                currentColumn = value;
-            } else if (!currentColumn.getColumn().getColumnName().equals(value.getColumn().getColumnName())) {
-                // TODO: handle what we do with a column and start over;
-                rowBuilder.addColumn(currentColumn.getColumn());
-                currentColumn = value;
-            } else if (currentColumn.getColumn().getTimestamp() < value.getColumn().getTimestamp()) {
-                currentColumn = value;
+                currentColumn = value.getColumn();
+            } else if (!currentColumn.getColumnName().toStringUtf8().equals(value.getColumn().getColumnName().toStringUtf8())) {
+                rowBuilder.addColumn(currentColumn);
+                currentColumn = value.getColumn();
+            } else if (currentColumn.getTimestamp() < value.getColumn().getTimestamp()) {
+                currentColumn = value.getColumn();
             }
             if (value.getColumn().getDeletedAt() > deletedAt) {
                 deletedAt = value.getColumn().getDeletedAt();
             }
         }
         if (currentColumn != null) {
-            rowBuilder.addColumn(currentColumn.getColumn());
+            rowBuilder.addColumn(currentColumn);
         }
         rowBuilder.setDeletedAt(deletedAt);
         if (currentColumn != null) {
-            rowBuilder.setRowKey(currentColumn.getColumn().getRowKey());
+            rowBuilder.setRowKey(currentColumn.getRowKey());
         }
 
         ctx.write(key, new Text(serialize(rowBuilder.build())));

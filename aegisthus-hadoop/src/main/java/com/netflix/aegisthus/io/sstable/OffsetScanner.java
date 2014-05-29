@@ -36,7 +36,7 @@ import org.apache.commons.io.input.CountingInputStream;
 public class OffsetScanner implements Iterator<Pair<Long, Long>> {
 	private DataInput input;
 	private Descriptor.Version version = null;
-	private CountingInputStream is;
+	private CountingInputStream countingInputStream;
 
 	public OffsetScanner(DataInput input, Descriptor.Version version) {
 		this.input = input;
@@ -44,8 +44,8 @@ public class OffsetScanner implements Iterator<Pair<Long, Long>> {
 	}
 
 	public OffsetScanner(InputStream is, String filename) {
-		this.is = new CountingInputStream(is);
-		this.input = new DataInputStream(is);
+		this.countingInputStream = new CountingInputStream(is);
+		this.input = new DataInputStream(this.countingInputStream);
 		this.version = Descriptor.fromFilename(filename).version;
 	}
 
@@ -84,7 +84,7 @@ public class OffsetScanner implements Iterator<Pair<Long, Long>> {
 	@Override
 	public Pair<Long, Long> next() {
 		try {
-			long indexOffset = is.getCount();
+			long indexOffset = countingInputStream.getCount();
 			int keysize = input.readUnsignedShort();
 			input.skipBytes(keysize);
 			Long offset = input.readLong();

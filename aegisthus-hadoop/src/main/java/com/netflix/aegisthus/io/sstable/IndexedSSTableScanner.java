@@ -62,7 +62,6 @@ public class IndexedSSTableScanner extends SSTableScanner {
         checked = true;
 	}
 
-    @Override
 	protected boolean validateRow(String key, long datasize) {
         if (nextRow != null) {
             long expectedDatasize = nextRow.right - curRow.right;
