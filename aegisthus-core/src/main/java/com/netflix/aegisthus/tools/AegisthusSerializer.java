@@ -28,6 +28,8 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
+import com.netflix.aegisthus.message.AegisthusProtos.Column;
+import com.netflix.aegisthus.message.AegisthusProtos.Row;
 
 /**
  * Read and write Aegisthus Json format.
@@ -141,4 +143,49 @@ public class AegisthusSerializer {
 
 		return str.toString();
 	}
+
+	protected static void serializeColumns(StringBuilder sb, List<Column> columns) {
+		int count = 0;
+		for (Column column: columns) {
+			if (count++ > 0) {
+				sb.append(", ");
+			}
+			sb.append("[");
+			sb.append("\"").append(((String) column.getColumnName().toStringUtf8()).replace("\\", "\\\\").replace("\"", "\\\"")).append("\"").append(",");
+			sb.append("\"").append(column.getValue().toStringUtf8()).append("\"").append(",");
+			sb.append(column.getTimestamp());
+			switch (column.getColumnType()) {
+            case COUNTER:
+				sb.append(",").append("\"c\"");
+                break;
+            case DELETED:
+				sb.append(",").append("\"d\"");
+				sb.append(",").append(column.getDeletedAt());
+                break;
+            case EXPIRING:
+				sb.append(",").append("\"e\"");
+				sb.append(",").append(column.getTtl());
+                break;
+            default:
+                break;
+            }
+			sb.append("]");
+		}
+	}
+    public static String serialize(Row row) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        insertKey(sb, row.getRowKey().toStringUtf8());
+        sb.append("{");
+        insertKey(sb, "deletedAt");
+        sb.append(row.getDeletedAt());
+        sb.append(", ");
+        insertKey(sb, "columns");
+        sb.append("[");
+        serializeColumns(sb, row.getColumnList());
+        sb.append("]");
+        sb.append("}}");
+
+        return sb.toString();
+    }
 }

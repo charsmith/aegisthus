@@ -183,6 +183,11 @@ public class SSTableScanner extends SSTableReader {
                 // aren't handling columns in the order they should be sorted.
                 // We will
                 // have to change that in the near future.
+                RangeTombstone rt = (RangeTombstone) atom;
+                columnBuilder.setColumnName(ByteString.copyFrom(atom.name().array()))
+                        .setColumnType(ColumnType.RANGEDTOMBSTONE)
+                        .setTimestamp(rt.minTimestamp())
+                        .setValue(ByteString.copyFrom(rt.max.array()));
                 /*
                  * RangeTombstone rt = (RangeTombstone) atom; sb.append("[\"");
                  * sb.append(convertColumnName(rt.name())); sb.append("\", \"");

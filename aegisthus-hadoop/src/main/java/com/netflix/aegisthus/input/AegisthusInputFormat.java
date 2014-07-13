@@ -17,7 +17,6 @@ package com.netflix.aegisthus.input;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -48,7 +47,6 @@ import com.netflix.aegisthus.input.readers.JsonRecordReader;
 import com.netflix.aegisthus.input.readers.SSTableRecordReader;
 import com.netflix.aegisthus.input.splits.AegCombinedSplit;
 import com.netflix.aegisthus.input.splits.AegCompressedSplit;
-import com.netflix.aegisthus.input.splits.AegIndexedSplit;
 import com.netflix.aegisthus.input.splits.AegSplit;
 import com.netflix.aegisthus.input.splits.AegSplit.Type;
 import com.netflix.aegisthus.io.sstable.OffsetScanner;
@@ -137,10 +135,10 @@ public class AegisthusInputFormat extends FileInputFormat<Text, ColumnWritable> 
 
             long bytesRemaining = length;
 
-            Iterator<Pair<Long, Long>> scanner = null;
             Path compressionPath = new Path(path.getParent(), path.getName().replaceAll("-Data.db",
                     "-CompressionInfo.db"));
             if (!fs.exists(compressionPath)) {
+                OffsetScanner scanner = null;
                 // Only initialize if we are going to have more than a single
                 // split
                 Path indexPath = null;
@@ -172,6 +170,7 @@ public class AegisthusInputFormat extends FileInputFormat<Text, ColumnWritable> 
                     bytesRemaining -= splitSize;
                     splitStart += splitSize;
                 }
+                scanner.close();
             }
 
             if (bytesRemaining != 0) {

@@ -22,13 +22,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
 import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.db.marshal.TypeParser;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.SyntaxException;
@@ -46,11 +44,13 @@ import rx.Observable;
 import rx.exceptions.OnErrorThrowable;
 import rx.functions.Func1;
 
+import com.google.protobuf.ByteString;
 import com.netflix.aegisthus.io.sstable.IndexedSSTableScanner;
 import com.netflix.aegisthus.io.sstable.OffsetScanner;
 import com.netflix.aegisthus.io.sstable.SSTableScanner;
 import com.netflix.aegisthus.io.sstable.compression.CompressionInputStream;
 import com.netflix.aegisthus.io.sstable.compression.CompressionMetadata;
+import com.netflix.aegisthus.mapred.reduce.CassReducer.Reduce;
 import com.netflix.aegisthus.message.AegisthusProtos.Column;
 
 public class SSTableExport {
@@ -99,16 +99,21 @@ public class SSTableExport {
     }
 
     @SuppressWarnings("rawtypes")
-    public static void export(rx.Observable<Column> observable, final Map<String, AbstractType> convertors) throws IOException {
+    public static void export(rx.Observable<Column> observable, final Map<String, AbstractType> convertors)
+            throws IOException {
         observable.onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends Column>>() {
-                    @Override
-                    public Observable<? extends Column> call(OnErrorThrowable onErrorThrowable) {
-                        System.err.println(onErrorThrowable.getMessage());
-                        return Observable.empty();
-                    }
-                }).subscribe(new rx.Observer<Column>() {
+            @Override
+            public Observable<? extends Column> call(OnErrorThrowable onErrorThrowable) {
+                System.err.println(onErrorThrowable.getMessage());
+                return Observable.empty();
+            }
+        }).take(10).subscribe(new rx.Observer<Column>() {
             @Override
             public void onCompleted() {
+                if (reduce != null) {
+                    reduce.finalize();
+                    System.out.println(AegisthusSerializer.serialize(reduce.getRow()));
+                }
             }
 
             @Override
@@ -116,13 +121,24 @@ public class SSTableExport {
                 System.err.println(e.getMessage());
             }
 
+            ByteString curString = null;
+            Reduce reduce = null;
+
             @Override
             public void onNext(Column t) {
-                System.out.println(String.format("%s - %s - %s", 
-                        BytesType.instance.getString(ByteBuffer.wrap(t.getRowKey().toByteArray())),
-                        BytesType.instance.getString(ByteBuffer.wrap(t.getColumnName().toByteArray())),
-                        BytesType.instance.getString(ByteBuffer.wrap(t.getValue().toByteArray()))));
-             
+                if (curString == null) {
+                    curString = t.getColumnName();
+                } else if (!curString.equals(t.getColumnName())) {
+                    reduce.finalize();
+                    System.out.println(AegisthusSerializer.serialize(reduce.getRow()));
+                    curString = t.getColumnName();
+                    reduce = null;
+                }
+                if (reduce == null) {
+                    reduce = new Reduce();
+                }
+                reduce.addColumn(t);
+
             }
         });
     }

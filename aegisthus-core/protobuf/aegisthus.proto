@@ -18,6 +18,7 @@ message Column {
       DELETED = 1;
       EXPIRING = 2;
       COUNTER = 3;
+      RANGEDTOMBSTONE = 4;
   }
 }
 
