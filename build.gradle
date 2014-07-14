@@ -40,7 +40,6 @@ project(':aegisthus-core') {
         includeInJar 'com.fasterxml.jackson.core:jackson-core:2.1.4'
         includeInJar 'com.fasterxml.jackson.core:jackson-annotations:2.1.4'
         includeInJar 'com.fasterxml.jackson.core:jackson-databind:2.1.4'
-        includeInJar 'com.google.protobuf:protobuf-java:2.5.0'
         compile 'org.apache.pig:pig:0.11.1'
         compile 'org.slf4j:slf4j-api:1.6.3'
         compile 'org.apache.hadoop:hadoop-core:' + (project.hasProperty('hadoopVersion') ? hadoopVersion : '1.1.0')
