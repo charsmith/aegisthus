@@ -16,9 +16,14 @@
 package com.netflix;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.cassandra.db.marshal.TypeParser;
+import org.apache.cassandra.exceptions.ConfigurationException;
+import org.apache.cassandra.exceptions.SyntaxException;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
@@ -26,14 +31,17 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.io.WritableComparator;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Partitioner;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.Tool;
@@ -43,14 +51,75 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.netflix.aegisthus.input.AegisthusInputFormat;
 import com.netflix.aegisthus.io.writable.AtomWritable;
+import com.netflix.aegisthus.io.writable.CompositeKey;
 import com.netflix.aegisthus.mapred.reduce.CassReducer;
 import com.netflix.aegisthus.tools.DirectoryWalker;
 
 public class Aegisthus extends Configured implements Tool {
-    public static class Map extends Mapper<Text, AtomWritable, Text, AtomWritable> {
+    public static class Map extends Mapper<CompositeKey, AtomWritable, CompositeKey, AtomWritable> {
         @Override
-        protected void map(Text key, AtomWritable value, Context context) throws IOException, InterruptedException {
+        protected void map(CompositeKey key, AtomWritable value, Context context) throws IOException,
+                InterruptedException {
             context.write(key, value);
+        }
+    }
+
+    public static class Partition extends Partitioner<CompositeKey, AtomWritable> {
+        @Override
+        public int getPartition(CompositeKey key, AtomWritable value, int numPartitions) {
+            return key.getKey().hashCode() % numPartitions;
+        }
+
+    }
+
+    public static class RowKeyGroupingComparator extends WritableComparator {
+        public RowKeyGroupingComparator() {
+            super(CompositeKey.class, true);
+        }
+
+        @SuppressWarnings("rawtypes")
+        @Override
+        public int compare(WritableComparable wc1, WritableComparable wc2) {
+            CompositeKey ck1 = (CompositeKey) wc1;
+            CompositeKey ck2 = (CompositeKey) wc2;
+            return ck1.getKey().compareTo(ck2.getKey());
+        }
+    }
+
+    public static class CompositeKeyComparator extends WritableComparator implements Configurable {
+        private Comparator<ByteBuffer> comparator;
+        private Configuration conf;
+
+        protected CompositeKeyComparator() {
+            super(CompositeKey.class, true);
+        }
+
+        @SuppressWarnings("rawtypes")
+        @Override
+        public int compare(WritableComparable wc1, WritableComparable wc2) {
+            CompositeKey ck1 = (CompositeKey) wc1;
+            CompositeKey ck2 = (CompositeKey) wc2;
+            ck1.setComparator(comparator);
+            return ck1.compareTo(ck2);
+        }
+
+        @Override
+        public Configuration getConf() {
+            return conf;
+        }
+
+        @Override
+        public void setConf(Configuration conf) {
+            this.conf = conf;
+            String comparatorType = conf.get(CassReducer.COLUMN_TYPE);
+            try {
+                comparator = TypeParser.parse(comparatorType);
+            } catch (SyntaxException e) {
+                throw new RuntimeException(e);
+            } catch (ConfigurationException e) {
+                throw new RuntimeException(e);
+            }
+
         }
     }
 
@@ -127,11 +196,15 @@ public class Aegisthus extends Configured implements Tool {
             return 1;
         }
         job.setInputFormatClass(AegisthusInputFormat.class);
-        job.setMapOutputKeyClass(Text.class);
+        job.setMapOutputKeyClass(CompositeKey.class);
         job.setMapOutputValueClass(AtomWritable.class);
         job.setOutputFormatClass(TextOutputFormat.class);
         job.setMapperClass(Map.class);
         job.setReducerClass(CassReducer.class);
+        job.setGroupingComparatorClass(RowKeyGroupingComparator.class);
+        job.setPartitionerClass(Partition.class);
+        job.setSortComparatorClass(CompositeKeyComparator.class);
+
         job.getConfiguration().set("aegisthus.output.location", cl.getOptionValue(OPT_OUTPUT));
         // turn off speculation, as right now we are writing to the final
         // output.

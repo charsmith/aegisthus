@@ -39,31 +39,26 @@ public class SSTableColumnScanner extends SSTableReader {
     private static final Log LOG = LogFactory.getLog(SSTableColumnScanner.class);
     private Descriptor.Version version = null;
     private final OnDiskAtom.Serializer serializer = new OnDiskAtom.Serializer(new ColumnSerializer());
-    private String comparatorType;
 
-    public SSTableColumnScanner(Descriptor.Version version, String comparatorType) {
+    public SSTableColumnScanner(Descriptor.Version version) {
         this.version = version;
         this.end = -1;
-        this.comparatorType = comparatorType;
     }
 
-    public SSTableColumnScanner(long end, Descriptor.Version version, String comparatorType) {
+    public SSTableColumnScanner(long end, Descriptor.Version version) {
         this.version = version;
         this.end = end;
-        this.comparatorType = comparatorType;
     }
 
-    public SSTableColumnScanner(InputStream is, Descriptor.Version version, String comparatorType) {
+    public SSTableColumnScanner(InputStream is, Descriptor.Version version) {
         this.version = version;
         this.end = -1;
-        this.comparatorType = comparatorType;
         init(is);
     }
 
-    public SSTableColumnScanner(InputStream is, long end, Descriptor.Version version, String comparatorType) {
+    public SSTableColumnScanner(InputStream is, long end, Descriptor.Version version) {
         this.version = version;
         this.end = end;
-        this.comparatorType = comparatorType;
         init(is);
     }
 
@@ -154,7 +149,7 @@ public class SSTableColumnScanner extends SSTableReader {
         for (int i = 0; i < count; i++) {
             // serialize columns
             OnDiskAtom atom = serializer.deserializeFromSSTable(columns, version);
-            subscriber.onNext(new AtomWritable(rowKey, deletedAt, atom, comparatorType));
+            subscriber.onNext(new AtomWritable(rowKey, deletedAt, atom));
         }
     }
 

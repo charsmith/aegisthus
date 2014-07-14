@@ -20,6 +20,7 @@ import java.io.DataInputStream;
 import java.io.IOError;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 
 import org.apache.cassandra.io.sstable.Descriptor;
@@ -33,14 +34,13 @@ import com.netflix.aegisthus.input.splits.AegSplit;
 import com.netflix.aegisthus.io.sstable.IndexedSSTableScanner;
 import com.netflix.aegisthus.io.sstable.SSTableColumnScanner;
 import com.netflix.aegisthus.io.writable.AtomWritable;
-import com.netflix.aegisthus.mapred.reduce.CassReducer;
+import com.netflix.aegisthus.io.writable.CompositeKey;
 
 public class SSTableRecordReader extends AegisthusRecordReader {
     private static final Log LOG = LogFactory.getLog(SSTableRecordReader.class);
     private SSTableColumnScanner scanner;
     private String filename = null;
     private Iterator<AtomWritable> iterator = null;
-    private String comparatorType;
 
     @Override
     public void close() throws IOException {
@@ -59,21 +59,19 @@ public class SSTableRecordReader extends AegisthusRecordReader {
         InputStream is = split.getInput(ctx.getConfiguration());
         end = split.getDataEnd();
         filename = split.getPath().toUri().toString();
-        comparatorType = ctx.getConfiguration().get(CassReducer.COLUMN_TYPE, "BytesType");
 
         LOG.info(String.format("File: %s", split.getPath().toUri().getPath()));
         LOG.info("Start: " + start);
         LOG.info("End: " + end);
-        LOG.info("comparatorType: " + comparatorType);
 
         try {
             DataInput indexInput = null;
             if (inputSplit instanceof AegIndexedSplit) {
                 AegIndexedSplit indexedSplit = (AegIndexedSplit) inputSplit;
                 indexInput = new DataInputStream(indexedSplit.getIndexInput(ctx.getConfiguration()));
-                scanner = new IndexedSSTableScanner(is, end, Descriptor.fromFilename(filename).version, indexInput, comparatorType);
+                scanner = new IndexedSSTableScanner(is, end, Descriptor.fromFilename(filename).version, indexInput);
             } else {
-                scanner = new SSTableColumnScanner(is, end, Descriptor.fromFilename(filename).version, comparatorType);
+                scanner = new SSTableColumnScanner(is, end, Descriptor.fromFilename(filename).version);
             }
             LOG.info("skipping to start: " + start);
             scanner.skipUnsafe(start);
@@ -107,7 +105,7 @@ public class SSTableRecordReader extends AegisthusRecordReader {
             return false;
         }
         AtomWritable atomWritable = iterator.next();
-        key.set(atomWritable.getKey());
+        key = new CompositeKey(ByteBuffer.wrap(atomWritable.getKey()), atomWritable.getAtom().name());
         value = atomWritable;
         return true;
     }

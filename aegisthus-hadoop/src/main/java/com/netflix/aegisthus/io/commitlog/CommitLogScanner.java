@@ -40,8 +40,8 @@ import com.netflix.aegisthus.io.writable.AtomWritable;
 @SuppressWarnings("unused")
 public class CommitLogScanner extends SSTableColumnScanner {
     int columnFamilyId;
-	public CommitLogScanner(InputStream is, Descriptor.Version version, int columnFamilyId, String comparatorType) {
-		super(is, -1, version, comparatorType);
+	public CommitLogScanner(InputStream is, Descriptor.Version version, int columnFamilyId) {
+		super(is, -1, version);
 		this.columnFamilyId = columnFamilyId;
 	}
 

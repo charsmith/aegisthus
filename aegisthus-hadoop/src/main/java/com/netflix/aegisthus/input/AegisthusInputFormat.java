@@ -29,7 +29,6 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.JobContext;
 import org.apache.hadoop.mapreduce.RecordReader;
@@ -46,24 +45,25 @@ import com.netflix.aegisthus.input.splits.AegSplit;
 import com.netflix.aegisthus.input.splits.AegSplit.Type;
 import com.netflix.aegisthus.io.sstable.OffsetScanner;
 import com.netflix.aegisthus.io.writable.AtomWritable;
+import com.netflix.aegisthus.io.writable.CompositeKey;
 
 /**
  * The AegisthusInputFormat class handles creating splits and reading sstables,
  * commitlogs and json.
  */
-public class AegisthusInputFormat extends FileInputFormat<Text, AtomWritable> {
+public class AegisthusInputFormat extends FileInputFormat<CompositeKey, AtomWritable> {
     private static final Log LOG = LogFactory.getLog(AegisthusInputFormat.class);
     @SuppressWarnings("rawtypes")
     protected Map<String, AbstractType> convertors;
 
     @Override
-    public RecordReader<Text, AtomWritable> createRecordReader(InputSplit inputSplit, TaskAttemptContext context) {
+    public RecordReader<CompositeKey, AtomWritable> createRecordReader(InputSplit inputSplit, TaskAttemptContext context) {
         AegSplit split = null;
         if (inputSplit instanceof AegCombinedSplit) {
             return new CombineSSTableReader();
         }
         split = (AegSplit) inputSplit;
-        RecordReader<Text, AtomWritable> reader = null;
+        RecordReader<CompositeKey, AtomWritable> reader = null;
         switch (split.getType()) {
         case sstable:
             reader = new SSTableRecordReader();

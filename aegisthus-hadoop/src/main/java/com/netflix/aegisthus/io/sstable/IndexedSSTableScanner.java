@@ -35,8 +35,8 @@ public class IndexedSSTableScanner extends SSTableColumnScanner {
 	public IndexedSSTableScanner(InputStream is,
 			long end,
 			Version version,
-			DataInput indexInput, String comparatorType) {
-		super(is, end, version, comparatorType);
+			DataInput indexInput) {
+		super(is, end, version);
 		this.is = new CountingInputStream(is);
 		this.indexScanner = new IndexScanner(indexInput, version);
 		this.nextRow = this.indexScanner.next();

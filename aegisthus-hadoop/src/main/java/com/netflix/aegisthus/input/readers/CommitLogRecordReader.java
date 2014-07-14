@@ -20,6 +20,7 @@ import java.io.DataInputStream;
 import java.io.IOError;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 
 import org.apache.cassandra.io.sstable.Descriptor;
@@ -39,14 +40,13 @@ import rx.functions.Func1;
 import com.netflix.aegisthus.input.splits.AegSplit;
 import com.netflix.aegisthus.io.commitlog.CommitLogScanner;
 import com.netflix.aegisthus.io.writable.AtomWritable;
-import com.netflix.aegisthus.mapred.reduce.CassReducer;
+import com.netflix.aegisthus.io.writable.CompositeKey;
 
 public class CommitLogRecordReader extends AegisthusRecordReader {
     private static final Log LOG = LogFactory.getLog(AegisthusRecordReader.class);
     protected CommitLogScanner scanner;
     protected int cfId;
     private Iterator<AtomWritable> iterator = null;
-    private String comparatorType;
 
     @Override
     public void close() throws IOException {
@@ -64,7 +64,6 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
 
         start = split.getStart();
         end = split.getEnd();
-        comparatorType = ctx.getConfiguration().get(CassReducer.COLUMN_TYPE, "BytesType");
         final Path file = split.getPath();
 
         try {
@@ -77,7 +76,7 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
             FSDataInputStream fileIn = fs.open(split.getPath());
             InputStream dis = new BufferedInputStream(fileIn);
             scanner = new CommitLogScanner(new DataInputStream(dis),
-                    Descriptor.fromFilename(split.getPath().getName()).version, cfId, comparatorType);
+                    Descriptor.fromFilename(split.getPath().getName()).version, cfId);
             this.pos = start;
             iterator = scanner.observable()
                     .onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends AtomWritable>>() {
@@ -105,7 +104,7 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
             return false;
         }
         AtomWritable atomWritable = iterator.next();
-        key.set(atomWritable.getKey());
+        key = new CompositeKey(ByteBuffer.wrap(atomWritable.getKey()), atomWritable.getAtom().name());
         value = atomWritable;
         return true;
     }

@@ -35,8 +35,9 @@ import org.apache.hadoop.mapreduce.Reducer;
 
 import com.google.common.collect.Lists;
 import com.netflix.aegisthus.io.writable.AtomWritable;
+import com.netflix.aegisthus.io.writable.CompositeKey;
 
-public class CassReducer extends Reducer<Text, AtomWritable, Text, Text> {
+public class CassReducer extends Reducer<CompositeKey, AtomWritable, Text, Text> {
     public static class Reduce {
         private List<OnDiskAtom> columns;
         private IColumn currentColumn = null;
@@ -132,7 +133,7 @@ public class CassReducer extends Reducer<Text, AtomWritable, Text, Text> {
     }
 
     @Override
-    public void reduce(Text key, Iterable<AtomWritable> values, Context ctx) throws IOException, InterruptedException {
+    public void reduce(CompositeKey key, Iterable<AtomWritable> values, Context ctx) throws IOException, InterruptedException {
         reduce = new Reduce();
         boolean first = true;
         for (AtomWritable value : values) {

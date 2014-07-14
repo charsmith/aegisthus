@@ -17,16 +17,16 @@ package com.netflix.aegisthus.input.readers;
 
 import java.io.IOException;
 
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.RecordReader;
 
 import com.netflix.aegisthus.io.writable.AtomWritable;
+import com.netflix.aegisthus.io.writable.CompositeKey;
 
-public abstract class AegisthusRecordReader extends RecordReader<Text, AtomWritable> {
+public abstract class AegisthusRecordReader extends RecordReader<CompositeKey, AtomWritable> {
 	protected long start;
 	protected long end;
 	protected long pos;
-	protected final Text key = new Text();
+	protected CompositeKey key = null;
 	protected AtomWritable value = null;
 	
 	@Override
@@ -34,7 +34,7 @@ public abstract class AegisthusRecordReader extends RecordReader<Text, AtomWrita
 	}
 	
 	@Override
-	public Text getCurrentKey() throws IOException, InterruptedException {
+	public CompositeKey getCurrentKey() throws IOException, InterruptedException {
 		return key;
 	}
 
