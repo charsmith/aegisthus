@@ -31,15 +31,16 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import com.netflix.aegisthus.input.splits.AegIndexedSplit;
 import com.netflix.aegisthus.input.splits.AegSplit;
 import com.netflix.aegisthus.io.sstable.IndexedSSTableScanner;
-import com.netflix.aegisthus.io.sstable.SSTableScanner;
-import com.netflix.aegisthus.io.writable.ColumnWritable;
-import com.netflix.aegisthus.message.AegisthusProtos.Column;
+import com.netflix.aegisthus.io.sstable.SSTableColumnScanner;
+import com.netflix.aegisthus.io.writable.AtomWritable;
+import com.netflix.aegisthus.mapred.reduce.CassReducer;
 
 public class SSTableRecordReader extends AegisthusRecordReader {
     private static final Log LOG = LogFactory.getLog(SSTableRecordReader.class);
-    private SSTableScanner scanner;
+    private SSTableColumnScanner scanner;
     private String filename = null;
-    private Iterator<Column> iterator = null;
+    private Iterator<AtomWritable> iterator = null;
+    private String comparatorType;
 
     @Override
     public void close() throws IOException {
@@ -58,25 +59,29 @@ public class SSTableRecordReader extends AegisthusRecordReader {
         InputStream is = split.getInput(ctx.getConfiguration());
         end = split.getDataEnd();
         filename = split.getPath().toUri().toString();
+        comparatorType = ctx.getConfiguration().get(CassReducer.COLUMN_TYPE, "BytesType");
 
         LOG.info(String.format("File: %s", split.getPath().toUri().getPath()));
         LOG.info("Start: " + start);
         LOG.info("End: " + end);
+        LOG.info("comparatorType: " + comparatorType);
 
         try {
             DataInput indexInput = null;
             if (inputSplit instanceof AegIndexedSplit) {
                 AegIndexedSplit indexedSplit = (AegIndexedSplit) inputSplit;
                 indexInput = new DataInputStream(indexedSplit.getIndexInput(ctx.getConfiguration()));
-                scanner = new IndexedSSTableScanner(is, end, Descriptor.fromFilename(filename).version, indexInput);
+                scanner = new IndexedSSTableScanner(is, end, Descriptor.fromFilename(filename).version, indexInput, comparatorType);
             } else {
-                scanner = new SSTableScanner(is, end, Descriptor.fromFilename(filename).version);
+                scanner = new SSTableColumnScanner(is, end, Descriptor.fromFilename(filename).version, comparatorType);
             }
             LOG.info("skipping to start: " + start);
             scanner.skipUnsafe(start);
             this.pos = start;
             LOG.info("Creating observable");
-            iterator = scanner.observable()/*.onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends Column>>() {
+            iterator = scanner.observable()
+            //TODO: This code should be included when we want to add skipping error rows.
+            /*.onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends Column>>() {
                 @Override
                 public Observable<? extends Column> call(OnErrorThrowable onErrorThrowable) {
                     LOG.error("failure deserializing", onErrorThrowable);
@@ -101,9 +106,9 @@ public class SSTableRecordReader extends AegisthusRecordReader {
         if (!iterator.hasNext()) {
             return false;
         }
-        Column column = iterator.next();
-        key.set(column.getRowKey().toStringUtf8());
-        value = new ColumnWritable(column);
+        AtomWritable atomWritable = iterator.next();
+        key.set(atomWritable.getKey());
+        value = atomWritable;
         return true;
     }
 }

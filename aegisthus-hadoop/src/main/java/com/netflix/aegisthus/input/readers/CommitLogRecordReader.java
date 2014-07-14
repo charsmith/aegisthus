@@ -38,14 +38,15 @@ import rx.functions.Func1;
 
 import com.netflix.aegisthus.input.splits.AegSplit;
 import com.netflix.aegisthus.io.commitlog.CommitLogScanner;
-import com.netflix.aegisthus.io.writable.ColumnWritable;
-import com.netflix.aegisthus.message.AegisthusProtos.Column;
+import com.netflix.aegisthus.io.writable.AtomWritable;
+import com.netflix.aegisthus.mapred.reduce.CassReducer;
 
 public class CommitLogRecordReader extends AegisthusRecordReader {
     private static final Log LOG = LogFactory.getLog(AegisthusRecordReader.class);
     protected CommitLogScanner scanner;
     protected int cfId;
-    private Iterator<Column> iterator = null;
+    private Iterator<AtomWritable> iterator = null;
+    private String comparatorType;
 
     @Override
     public void close() throws IOException {
@@ -57,11 +58,13 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
 
     @SuppressWarnings("rawtypes")
     @Override
-    public void initialize(InputSplit inputSplit, final TaskAttemptContext ctx) throws IOException, InterruptedException {
+    public void initialize(InputSplit inputSplit, final TaskAttemptContext ctx) throws IOException,
+            InterruptedException {
         AegSplit split = (AegSplit) inputSplit;
 
         start = split.getStart();
         end = split.getEnd();
+        comparatorType = ctx.getConfiguration().get(CassReducer.COLUMN_TYPE, "BytesType");
         final Path file = split.getPath();
 
         try {
@@ -74,19 +77,20 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
             FSDataInputStream fileIn = fs.open(split.getPath());
             InputStream dis = new BufferedInputStream(fileIn);
             scanner = new CommitLogScanner(new DataInputStream(dis),
-                    Descriptor.fromFilename(split.getPath().getName()).version, cfId);
+                    Descriptor.fromFilename(split.getPath().getName()).version, cfId, comparatorType);
             this.pos = start;
-            iterator = scanner.observable().onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends Column>>() {
-                @Override
-                public Observable<? extends Column> call(OnErrorThrowable onErrorThrowable) {
-                    LOG.error("failure deserializing", onErrorThrowable);
-                    if (ctx instanceof TaskInputOutputContext) {
-                        ((TaskInputOutputContext) ctx).getCounter("aegisthus",
-                                onErrorThrowable.getCause().getClass().getSimpleName()).increment(1L);
-                    }
-                    return Observable.empty();
-                }
-            })
+            iterator = scanner.observable()
+                    .onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends AtomWritable>>() {
+                        @Override
+                        public Observable<? extends AtomWritable> call(OnErrorThrowable onErrorThrowable) {
+                            LOG.error("failure deserializing", onErrorThrowable);
+                            if (ctx instanceof TaskInputOutputContext) {
+                                ((TaskInputOutputContext) ctx).getCounter("aegisthus",
+                                        onErrorThrowable.getCause().getClass().getSimpleName()).increment(1L);
+                            }
+                            return Observable.empty();
+                        }
+                    })
                     .toBlockingObservable()
                     .toIterable()
                     .iterator();
@@ -100,9 +104,9 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
         if (!iterator.hasNext()) {
             return false;
         }
-        Column column = iterator.next();
-        key.set(column.getRowKey().toString());
-        value = new ColumnWritable(column);
+        AtomWritable atomWritable = iterator.next();
+        key.set(atomWritable.getKey());
+        value = atomWritable;
         return true;
     }
 

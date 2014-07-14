@@ -40,18 +40,11 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.cli.PosixParser;
 
-import rx.Observable;
-import rx.exceptions.OnErrorThrowable;
-import rx.functions.Func1;
-
-import com.google.protobuf.ByteString;
-import com.netflix.aegisthus.io.sstable.IndexedSSTableScanner;
 import com.netflix.aegisthus.io.sstable.OffsetScanner;
 import com.netflix.aegisthus.io.sstable.SSTableScanner;
+import com.netflix.aegisthus.io.sstable.SSTableSplitScanner;
 import com.netflix.aegisthus.io.sstable.compression.CompressionInputStream;
 import com.netflix.aegisthus.io.sstable.compression.CompressionMetadata;
-import com.netflix.aegisthus.mapred.reduce.CassReducer.Reduce;
-import com.netflix.aegisthus.message.AegisthusProtos.Column;
 
 public class SSTableExport {
 
@@ -63,8 +56,8 @@ public class SSTableExport {
     private static final String ROWSIZE = "r";
     private static final String COLUMN_NAME_TYPE = "c";
     private static final String OPT_COMP = "comp";
+    private static final String OPT_MAX_COLUMN_SIZE = "colSize";
     private static final String OPT_VERSION = "v";
-    private static final String OPT_INDEX_CHECK = "ic";
 
     static {
         options.addOption(new Option(ROWSIZE, false, "Output row sizes"));
@@ -80,10 +73,6 @@ public class SSTableExport {
         optColumnNameType.setArgs(1);
         options.addOption(optColumnNameType);
 
-        Option optIndexCheck = new Option(OPT_INDEX_CHECK, true, "index file for the sstable");
-        optIndexCheck.setArgs(1);
-        options.addOption(optIndexCheck);
-
         Option optVersion = new Option(OPT_VERSION, true, "file version (e.g ic or hf)");
         optVersion.setArgs(1);
         options.addOption(optVersion);
@@ -91,60 +80,30 @@ public class SSTableExport {
         Option optEnd = new Option(END, true, "byte offset to end reading at");
         optEnd.setArgs(1);
         options.addOption(optEnd);
+
+        Option optColSize = new Option(OPT_MAX_COLUMN_SIZE, true, "Max Column Size in Bytes");
+        optColSize.setArgs(1);
+        options.addOption(optColSize);
     }
 
     @SuppressWarnings("rawtypes")
     public static void export(Iterator scanner) throws IOException {
-        // export(scanner, false);
+        export(scanner, false);
     }
 
     @SuppressWarnings("rawtypes")
-    public static void export(rx.Observable<Column> observable, final Map<String, AbstractType> convertors)
-            throws IOException {
-        observable.onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends Column>>() {
-            @Override
-            public Observable<? extends Column> call(OnErrorThrowable onErrorThrowable) {
-                System.err.println(onErrorThrowable.getMessage());
-                return Observable.empty();
+    public static void export(Iterator scanner, boolean newline) throws IOException {
+        while (scanner.hasNext()) {
+            System.out.print(scanner.next());
+            if (newline) {
+                System.out.println();
             }
-        }).take(10).subscribe(new rx.Observer<Column>() {
-            @Override
-            public void onCompleted() {
-                if (reduce != null) {
-                    reduce.finalize();
-                    System.out.println(AegisthusSerializer.serialize(reduce.getRow()));
-                }
-            }
-
-            @Override
-            public void onError(Throwable e) {
-                System.err.println(e.getMessage());
-            }
-
-            ByteString curString = null;
-            Reduce reduce = null;
-
-            @Override
-            public void onNext(Column t) {
-                if (curString == null) {
-                    curString = t.getColumnName();
-                } else if (!curString.equals(t.getColumnName())) {
-                    reduce.finalize();
-                    System.out.println(AegisthusSerializer.serialize(reduce.getRow()));
-                    curString = t.getColumnName();
-                    reduce = null;
-                }
-                if (reduce == null) {
-                    reduce = new Reduce();
-                }
-                reduce.addColumn(t);
-
-            }
-        });
+        }
+        System.out.flush();
     }
 
     public static void exportIndex(String ssTableFile) throws IOException {
-        // export(new OffsetScanner(ssTableFile), true);
+        export(new OffsetScanner(ssTableFile), true);
     }
 
     public static void exportIndexSplit(String ssTableFile, DataInput input, Descriptor.Version version)
@@ -169,11 +128,11 @@ public class SSTableExport {
     }
 
     public static void exportRowSize(String ssTableFile) throws IOException {
-        // export(new SSTableSplitScanner(ssTableFile), true);
+        export(new SSTableSplitScanner(ssTableFile), true);
     }
 
     public static void exportStream(Descriptor.Version version) throws IOException {
-        export(new SSTableScanner(new DataInputStream(System.in), version).observable(), null);
+        export(new SSTableScanner(new DataInputStream(System.in), version));
     }
 
     @SuppressWarnings("rawtypes")
@@ -263,16 +222,16 @@ public class SSTableExport {
             if (version == null) {
                 version = Descriptor.fromFilename(ssTableFileName).version;
             }
-            DataInputStream inputIndex = null;
-            SSTableScanner scanner = null;
-            if (cmd.hasOption(OPT_INDEX_CHECK)) {
-                FileInputStream fisIndex = new FileInputStream(cmd.getOptionValue(OPT_INDEX_CHECK));
-                inputIndex = new DataInputStream(new BufferedInputStream(fisIndex, 65536 * 10));
-                scanner = new IndexedSSTableScanner(input, end, version, inputIndex);
-            } else {
-                scanner = new SSTableScanner(input, end, version);
+            SSTableScanner scanner = new SSTableScanner(input, convertors, end, version);
+            if (cmd.hasOption(OPT_MAX_COLUMN_SIZE)) {
+                scanner.setMaxColSize(Long.parseLong(cmd.getOptionValue(OPT_MAX_COLUMN_SIZE)));
             }
-            export(scanner.observable(), convertors);
+            export(scanner);
+            if (cmd.hasOption(OPT_MAX_COLUMN_SIZE)) {
+                if (scanner.getErrorRowCount() > 0) {
+                    System.err.println(String.format("%d rows were too large", scanner.getErrorRowCount()));
+                }
+            }
         }
     }
 }

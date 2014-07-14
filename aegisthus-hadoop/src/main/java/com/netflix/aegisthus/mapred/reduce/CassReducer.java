@@ -15,68 +15,149 @@
  */
 package com.netflix.aegisthus.mapred.reduce;
 
+import java.io.DataOutput;
 import java.io.IOException;
+import java.util.List;
 
+import org.apache.cassandra.db.ColumnSerializer;
+import org.apache.cassandra.db.IColumn;
+import org.apache.cassandra.db.OnDiskAtom;
+import org.apache.cassandra.db.RangeTombstone;
+import org.apache.cassandra.db.marshal.BytesType;
+import org.apache.cassandra.io.sstable.Descriptor.Version;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Reducer;
 
-import com.netflix.aegisthus.io.writable.ColumnWritable;
-import com.netflix.aegisthus.message.AegisthusProtos.Column;
-import com.netflix.aegisthus.message.AegisthusProtos.Row;
-import com.netflix.aegisthus.tools.AegisthusSerializer;
+import com.google.common.collect.Lists;
+import com.netflix.aegisthus.io.writable.AtomWritable;
 
-public class CassReducer extends Reducer<Text, ColumnWritable, Text, Text> {
+public class CassReducer extends Reducer<Text, AtomWritable, Text, Text> {
     public static class Reduce {
-        Long deletedAt = Long.MIN_VALUE;
-        Column currentColumn = null;
-        Row.Builder rowBuilder;
+        private List<OnDiskAtom> columns;
+        private IColumn currentColumn = null;
+        private Long deletedAt = Long.MIN_VALUE;
+        private byte[] key = null;
+        private final OnDiskAtom.Serializer serializer = new OnDiskAtom.Serializer(new ColumnSerializer());
+        private RangeTombstone.Tracker tombstoneTracker;
 
         public Reduce() {
-            rowBuilder = Row.newBuilder();
+            columns = Lists.newArrayList();
+            // TODO: need to get comparator
+            this.tombstoneTracker = new RangeTombstone.Tracker(BytesType.instance);
         }
 
-        public void addColumn(Column column) {
-            if (currentColumn == null) {
-                currentColumn = column;
-            } else if (!currentColumn.getColumnName().toStringUtf8().equals(column.getColumnName().toStringUtf8())) {
-                rowBuilder.addColumn(currentColumn);
-                currentColumn = column;
-            } else if (currentColumn.getTimestamp() < column.getTimestamp()) {
-                currentColumn = column;
+        public void addAtom(OnDiskAtom atom) {
+            if (atom == null) {
+                return;
             }
-            if (column.getDeletedAt() > deletedAt) {
-                deletedAt = column.getDeletedAt();
-            }
-        }
-
-        public void finalize() {
-            if (currentColumn != null) {
-                rowBuilder.addColumn(currentColumn);
-            }
-            rowBuilder.setDeletedAt(deletedAt);
-            if (currentColumn != null) {
-                rowBuilder.setRowKey(currentColumn.getRowKey());
+            this.tombstoneTracker.update(atom);
+            // Right now, we will only keep columns. This works because we will
+            // have all the columns a range tombstone applies to when we create
+            // a snapshot. This will not be true if we go to partial incremental
+            // processing
+            if (atom instanceof IColumn) {
+                IColumn column = (IColumn) atom;
+                // If the column is deleted by the rangeTombstone, just discard
+                // it, every other column of the same name will be discarded as
+                // well, unless it is later than the range tombstone in which
+                // case the column is out of date anyway
+                if (this.tombstoneTracker.isDeleted(column)) {
+                    return;
+                }
+                if (currentColumn == null) {
+                    currentColumn = column;
+                    return;
+                } else if (currentColumn.name().equals(column.name())) {
+                    if (column.timestamp() > currentColumn.timestamp()) {
+                        currentColumn = column;
+                    }
+                } else {
+                    columns.add(currentColumn);
+                    currentColumn = column;
+                }
             }
         }
         
-        public Row getRow() {
-            return rowBuilder.build();
+        //TODO: expire columns
+        public void finalize() {
+            if (currentColumn != null) {
+                columns.add(currentColumn);
+            }
+        }
+
+        public void setDeletedAt(long deletedAt) {
+            this.deletedAt = deletedAt;
+        }
+
+        public void setKey(byte[] key) {
+            this.key = key;
+        }
+
+        public void writeRow(DataOutput dos) throws IOException {
+            dos.writeShort(this.key.length);
+            dos.write(this.key);
+            long dataSize = 0;
+            for (OnDiskAtom atom : columns) {
+                dataSize += atom.serializedSizeForSSTable();
+            }
+            dos.writeLong(dataSize);
+            dos.writeInt((int) (this.deletedAt / 1000));
+            dos.writeLong(this.deletedAt);
+            dos.writeInt(columns.size());
+            for (OnDiskAtom atom : columns) {
+                serializer.serializeForSSTable(atom, dos);
+            }
+
         }
     }
+
+    private static final Log LOG = LogFactory.getLog(CassReducer.class);
+    public static final String COLUMN_TYPE = "aegisthus.columntype";
+
+    public static final String KEY_TYPE = "aegisthus.keytype";
+
+    FSDataOutputStream dos;
 
     Reduce reduce;
 
-    public CassReducer() {
-        reduce = new Reduce();
+    @Override
+    protected void cleanup(Context context) throws IOException, InterruptedException {
+        dos.close();
+        super.cleanup(context);
     }
 
     @Override
-    public void reduce(Text key, Iterable<ColumnWritable> values, Context ctx) throws IOException, InterruptedException {
-        for (ColumnWritable value : values) {
-            reduce.addColumn(value.getColumn());
+    public void reduce(Text key, Iterable<AtomWritable> values, Context ctx) throws IOException, InterruptedException {
+        reduce = new Reduce();
+        boolean first = true;
+        for (AtomWritable value : values) {
+            if (first) {
+                reduce.setKey(value.getKey());
+                reduce.setDeletedAt(value.getDeletedAt());
+            }
+            reduce.addAtom(value.getAtom());
         }
         reduce.finalize();
+        reduce.writeRow(dos);
+        // TODO: batch this
+        ctx.getCounter("aegisthus", "rows_written").increment(1L);
+    }
 
-        ctx.write(key, new Text(AegisthusSerializer.serialize(reduce.getRow())));
+    @Override
+    protected void setup(Context context) throws IOException, InterruptedException {
+        Path outputDir = new Path(context.getConfiguration().get("aegisthus.output.location"));
+        FileSystem fs = outputDir.getFileSystem(context.getConfiguration());
+        String filename = String.format("%s-%s-%05d0%04d-Data.db",
+                context.getConfiguration().get("aegisthus.dataset", "keyspace-dataset"), Version.current_version,
+                context.getTaskAttemptID().getTaskID().getId(), context.getTaskAttemptID().getId());
+        Path outputFile = new Path(outputDir, filename);
+        LOG.info("writing to: " + outputFile.toUri().toString());
+        dos = fs.create(outputFile);
+        super.setup(context);
     }
 }

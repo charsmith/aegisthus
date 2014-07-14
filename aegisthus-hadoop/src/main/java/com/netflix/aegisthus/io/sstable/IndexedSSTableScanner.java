@@ -25,7 +25,7 @@ import org.apache.cassandra.io.sstable.Descriptor.Version;
 import org.apache.cassandra.utils.Pair;
 import org.apache.commons.io.input.CountingInputStream;
 
-public class IndexedSSTableScanner extends SSTableScanner {
+public class IndexedSSTableScanner extends SSTableColumnScanner {
 	private IndexScanner indexScanner = null;
 	private Pair<String, Long> curRow = null;
 	private Pair<String, Long> nextRow = null;
@@ -35,8 +35,8 @@ public class IndexedSSTableScanner extends SSTableScanner {
 	public IndexedSSTableScanner(InputStream is,
 			long end,
 			Version version,
-			DataInput indexInput) {
-		super(is, end, version);
+			DataInput indexInput, String comparatorType) {
+		super(is, end, version, comparatorType);
 		this.is = new CountingInputStream(is);
 		this.indexScanner = new IndexScanner(indexInput, version);
 		this.nextRow = this.indexScanner.next();

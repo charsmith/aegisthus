@@ -17,12 +17,10 @@ package com.netflix.aegisthus.io.commitlog;
 
 import java.io.DataInput;
 import java.io.DataInputStream;
-import java.io.IOError;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import org.apache.cassandra.db.ColumnFamily;
@@ -33,22 +31,21 @@ import org.apache.cassandra.utils.ByteBufferUtil;
 
 import rx.Subscriber;
 
-import com.google.common.collect.Lists;
-import com.netflix.aegisthus.io.sstable.SSTableScanner;
-import com.netflix.aegisthus.message.AegisthusProtos.Column;
+import com.netflix.aegisthus.io.sstable.SSTableColumnScanner;
+import com.netflix.aegisthus.io.writable.AtomWritable;
 
 /**
  * This code is experimental.
  */
 @SuppressWarnings("unused")
-public class CommitLogScanner extends SSTableScanner {
+public class CommitLogScanner extends SSTableColumnScanner {
     int columnFamilyId;
-	public CommitLogScanner(InputStream is, Descriptor.Version version, int columnFamilyId) {
-		super(is, -1, version);
+	public CommitLogScanner(InputStream is, Descriptor.Version version, int columnFamilyId, String comparatorType) {
+		super(is, -1, version, comparatorType);
 		this.columnFamilyId = columnFamilyId;
 	}
 
-    protected void deserialize(Subscriber<? super Column> subscriber) {
+    protected void deserialize(Subscriber<? super AtomWritable> subscriber) {
 		int serializedSize;
 		try {
 			outer: while (true) {

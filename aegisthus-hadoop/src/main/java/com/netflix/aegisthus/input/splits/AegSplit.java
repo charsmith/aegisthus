@@ -36,7 +36,7 @@ public class AegSplit extends InputSplit implements Writable {
 	private static final Log LOG = LogFactory.getLog(AegSplit.class);
 
 	public enum Type {
-		commitlog, json, sstable
+		commitlog, sstable
 	}
 
 	protected long end;

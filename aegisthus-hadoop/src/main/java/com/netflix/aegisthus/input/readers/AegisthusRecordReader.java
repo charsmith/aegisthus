@@ -20,14 +20,14 @@ import java.io.IOException;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.RecordReader;
 
-import com.netflix.aegisthus.io.writable.ColumnWritable;
+import com.netflix.aegisthus.io.writable.AtomWritable;
 
-public abstract class AegisthusRecordReader extends RecordReader<Text, ColumnWritable> {
+public abstract class AegisthusRecordReader extends RecordReader<Text, AtomWritable> {
 	protected long start;
 	protected long end;
 	protected long pos;
 	protected final Text key = new Text();
-	protected ColumnWritable value = null;
+	protected AtomWritable value = null;
 	
 	@Override
 	public void close() throws IOException {
@@ -39,7 +39,7 @@ public abstract class AegisthusRecordReader extends RecordReader<Text, ColumnWri
 	}
 
 	@Override
-	public ColumnWritable getCurrentValue() throws IOException, InterruptedException {
+	public AtomWritable getCurrentValue() throws IOException, InterruptedException {
 		return value;
 	}
 

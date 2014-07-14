@@ -21,9 +21,6 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.TypeParser;
-import org.apache.cassandra.exceptions.ConfigurationException;
-import org.apache.cassandra.exceptions.SyntaxException;
 import org.apache.cassandra.utils.Pair;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -40,42 +37,34 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.netflix.aegisthus.input.readers.CombineSSTableReader;
 import com.netflix.aegisthus.input.readers.CommitLogRecordReader;
-import com.netflix.aegisthus.input.readers.JsonRecordReader;
 import com.netflix.aegisthus.input.readers.SSTableRecordReader;
 import com.netflix.aegisthus.input.splits.AegCombinedSplit;
 import com.netflix.aegisthus.input.splits.AegCompressedSplit;
 import com.netflix.aegisthus.input.splits.AegSplit;
 import com.netflix.aegisthus.input.splits.AegSplit.Type;
 import com.netflix.aegisthus.io.sstable.OffsetScanner;
-import com.netflix.aegisthus.io.sstable.SSTableScanner;
-import com.netflix.aegisthus.io.writable.ColumnWritable;
+import com.netflix.aegisthus.io.writable.AtomWritable;
 
 /**
  * The AegisthusInputFormat class handles creating splits and reading sstables,
  * commitlogs and json.
  */
-public class AegisthusInputFormat extends FileInputFormat<Text, ColumnWritable> {
+public class AegisthusInputFormat extends FileInputFormat<Text, AtomWritable> {
     private static final Log LOG = LogFactory.getLog(AegisthusInputFormat.class);
-    public static final String COLUMN_TYPE = "aegisthus.columntype";
-    public static final String KEY_TYPE = "aegisthus.keytype";
     @SuppressWarnings("rawtypes")
     protected Map<String, AbstractType> convertors;
 
     @Override
-    public RecordReader<Text, ColumnWritable> createRecordReader(InputSplit inputSplit, TaskAttemptContext context) {
+    public RecordReader<Text, AtomWritable> createRecordReader(InputSplit inputSplit, TaskAttemptContext context) {
         AegSplit split = null;
         if (inputSplit instanceof AegCombinedSplit) {
             return new CombineSSTableReader();
         }
         split = (AegSplit) inputSplit;
-        RecordReader<Text, ColumnWritable> reader = null;
+        RecordReader<Text, AtomWritable> reader = null;
         switch (split.getType()) {
-        case json:
-            reader = new JsonRecordReader();
-            break;
         case sstable:
             reader = new SSTableRecordReader();
             break;
@@ -84,38 +73,6 @@ public class AegisthusInputFormat extends FileInputFormat<Text, ColumnWritable> 
             break;
         }
         return reader;
-    }
-
-    @SuppressWarnings("rawtypes")
-    private Map<String, AbstractType> initConvertors(JobContext job) throws IOException {
-        Map<String, AbstractType> convertors = Maps.newHashMap();
-        String conversion = job.getConfiguration().get(KEY_TYPE);
-        LOG.info(KEY_TYPE + ": " + conversion);
-        if (conversion != null) {
-            try {
-                convertors.put(SSTableScanner.KEY, TypeParser.parse(conversion));
-            } catch (ConfigurationException e) {
-                throw new IOException(e);
-            } catch (SyntaxException e) {
-                throw new IOException(e);
-            }
-        }
-        conversion = job.getConfiguration().get(COLUMN_TYPE);
-        LOG.info(COLUMN_TYPE + ": " + conversion);
-        if (conversion != null) {
-            try {
-                convertors.put(SSTableScanner.COLUMN_NAME_KEY, TypeParser.parse(conversion));
-            } catch (ConfigurationException e) {
-                throw new IOException(e);
-            } catch (SyntaxException e) {
-                throw new IOException(e);
-            }
-        }
-
-        if (convertors.size() == 0) {
-            return null;
-        }
-        return convertors;
     }
 
     /**
@@ -170,7 +127,9 @@ public class AegisthusInputFormat extends FileInputFormat<Text, ColumnWritable> 
                     bytesRemaining -= splitSize;
                     splitStart += splitSize;
                 }
-                scanner.close();
+                if (scanner != null) {
+                    scanner.close();
+                }
             }
 
             if (bytesRemaining != 0) {
@@ -192,7 +151,6 @@ public class AegisthusInputFormat extends FileInputFormat<Text, ColumnWritable> 
     public List<InputSplit> getSplits(JobContext job) throws IOException {
         List<InputSplit> splits = Lists.newArrayList();
         List<FileStatus> files = listStatus(job);
-        convertors = initConvertors(job);
         for (FileStatus file : files) {
             String name = file.getPath().getName();
             if (name.endsWith("-Data.db")) {
@@ -203,12 +161,6 @@ public class AegisthusInputFormat extends FileInputFormat<Text, ColumnWritable> 
                         .getFileSystem(job.getConfiguration())
                         .getFileBlockLocations(file, 0, file.getLen());
                 splits.add(new AegSplit(file.getPath(), 0, file.getLen(), blkLocations[0].getHosts(), Type.commitlog));
-            } else {
-                LOG.info(String.format("adding %s as a json split", file.getPath().toUri().toString()));
-                BlockLocation[] blkLocations = file.getPath()
-                        .getFileSystem(job.getConfiguration())
-                        .getFileBlockLocations(file, 0, file.getLen());
-                splits.add(new AegSplit(file.getPath(), 0, file.getLen(), blkLocations[0].getHosts(), Type.json));
             }
         }
         return splits;
