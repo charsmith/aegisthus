@@ -90,7 +90,7 @@ public class SSTableRecordReader extends AegisthusRecordReader {
                     return Observable.empty();
                 }
             })*/
-                    .toBlockingObservable()
+                    .toBlocking()
                     .toIterable()
                     .iterator();
             LOG.info("done initializing");

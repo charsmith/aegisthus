@@ -90,7 +90,7 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
                             return Observable.empty();
                         }
                     })
-                    .toBlockingObservable()
+                    .toBlocking()
                     .toIterable()
                     .iterator();
         } catch (IOException e) {
