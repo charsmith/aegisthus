@@ -105,7 +105,11 @@ public class SSTableRecordReader extends AegisthusRecordReader {
             return false;
         }
         AtomWritable atomWritable = iterator.next();
-        key = new CompositeKey(ByteBuffer.wrap(atomWritable.getKey()), atomWritable.getAtom().name());
+        key = new CompositeKey(
+                ByteBuffer.wrap(atomWritable.getKey()),
+                atomWritable.getAtom().name(),
+                atomWritable.getAtom().maxTimestamp()
+        );
         value = atomWritable;
         return true;
     }
