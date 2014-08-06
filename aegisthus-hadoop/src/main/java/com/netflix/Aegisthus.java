@@ -220,8 +220,7 @@ public class Aegisthus extends Configured implements Tool {
             paths.addAll(getDataFiles(job.getConfiguration(), cl.getOptionValue(OPT_INPUTDIR)));
         }
         TextInputFormat.setInputPaths(job, paths.toArray(new Path[0]));
-        // TODO: create a temp path
-        Path temp = new Path("/tmp/2");
+        Path temp = new Path("/tmp/" + UUID.randomUUID());
         TextOutputFormat.setOutputPath(job, temp);
 
         job.submit();
