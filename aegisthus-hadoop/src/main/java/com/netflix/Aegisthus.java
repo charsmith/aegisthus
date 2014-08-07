@@ -53,7 +53,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.netflix.aegisthus.io.writable.AtomWritable;
 import com.netflix.aegisthus.io.writable.CompositeKey;
-import com.netflix.aegisthus.mapred.reduce.CassReducer;
+import com.netflix.aegisthus.mapred.reduce.CassSstableReducer;
 import com.netflix.aegisthus.tools.DirectoryWalker;
 
 public class Aegisthus extends Configured implements Tool {
@@ -112,7 +112,7 @@ public class Aegisthus extends Configured implements Tool {
         @Override
         public void setConf(Configuration conf) {
             this.conf = conf;
-            String comparatorType = conf.get(CassReducer.COLUMN_TYPE);
+            String comparatorType = conf.get(CassSstableReducer.COLUMN_TYPE);
             try {
                 comparator = TypeParser.parse(comparatorType);
             } catch (SyntaxException e) {
@@ -213,7 +213,7 @@ public class Aegisthus extends Configured implements Tool {
         job.setMapOutputValueClass(AtomWritable.class);
         job.setOutputFormatClass(TextOutputFormat.class);
         job.setMapperClass(Map.class);
-        job.setReducerClass(CassReducer.class);
+        job.setReducerClass(CassSstableReducer.class);
         job.setGroupingComparatorClass(RowKeyGroupingComparator.class);
         job.setPartitionerClass(Partition.class);
         job.setSortComparatorClass(CompositeKeyComparator.class);

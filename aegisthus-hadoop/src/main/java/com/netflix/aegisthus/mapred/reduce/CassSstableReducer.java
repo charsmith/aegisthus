@@ -37,7 +37,7 @@ import com.google.common.collect.Lists;
 import com.netflix.aegisthus.io.writable.AtomWritable;
 import com.netflix.aegisthus.io.writable.CompositeKey;
 
-public class CassReducer extends Reducer<CompositeKey, AtomWritable, Text, Text> {
+public class CassSstableReducer extends Reducer<CompositeKey, AtomWritable, Text, Text> {
     public static class Reduce {
         private List<OnDiskAtom> columns;
         private IColumn currentColumn = null;
@@ -117,7 +117,7 @@ public class CassReducer extends Reducer<CompositeKey, AtomWritable, Text, Text>
         }
     }
 
-    private static final Log LOG = LogFactory.getLog(CassReducer.class);
+    private static final Log LOG = LogFactory.getLog(CassSstableReducer.class);
     public static final String COLUMN_TYPE = "aegisthus.columntype";
 
     public static final String KEY_TYPE = "aegisthus.keytype";
