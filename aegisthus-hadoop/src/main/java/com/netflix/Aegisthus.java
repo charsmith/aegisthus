@@ -44,6 +44,7 @@ import org.apache.hadoop.mapreduce.InputFormat;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Partitioner;
+import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.Tool;
@@ -53,7 +54,6 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.netflix.aegisthus.io.writable.AtomWritable;
 import com.netflix.aegisthus.io.writable.CompositeKey;
-import com.netflix.aegisthus.mapred.reduce.CassSstableReducer;
 import com.netflix.aegisthus.tools.DirectoryWalker;
 
 public class Aegisthus extends Configured implements Tool {
@@ -128,6 +128,7 @@ public class Aegisthus extends Configured implements Tool {
     private static final String OPT_INPUTDIR = "inputDir";
     private static final String OPT_INPUTFORMATCLASSNAME = "inputFormatClassName";
     private static final String OPT_OUTPUT = "output";
+    private static final String OPT_REDUCERCLASSNAME = "reducerClassName";
 
     public static void main(String[] args) throws Exception {
         int res = ToolRunner.run(new Configuration(), new Aegisthus(), args);
@@ -172,6 +173,10 @@ public class Aegisthus extends Configured implements Tool {
                 .withDescription("full class name to use for the input format class")
                 .hasArg()
                 .create(OPT_INPUTFORMATCLASSNAME));
+        opts.addOption(OptionBuilder.withArgName(OPT_REDUCERCLASSNAME)
+                .withDescription("full class name to use for the reducer class")
+                .hasArg()
+                .create(OPT_REDUCERCLASSNAME));
         CommandLineParser parser = new GnuParser();
 
         try {
@@ -209,7 +214,9 @@ public class Aegisthus extends Configured implements Tool {
         job.setMapOutputValueClass(AtomWritable.class);
         job.setOutputFormatClass(TextOutputFormat.class);
         job.setMapperClass(Map.class);
-        job.setReducerClass(CassSstableReducer.class);
+        job.setReducerClass((Class<Reducer>) Class.forName(
+                cl.getOptionValue(OPT_REDUCERCLASSNAME, "com.netflix.aegisthus.mapred.reduce.CassReducer")
+        ));
         job.setGroupingComparatorClass(RowKeyGroupingComparator.class);
         job.setPartitionerClass(Partition.class);
         job.setSortComparatorClass(CompositeKeyComparator.class);
