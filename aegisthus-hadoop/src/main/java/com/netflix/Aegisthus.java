@@ -112,7 +112,7 @@ public class Aegisthus extends Configured implements Tool {
         @Override
         public void setConf(Configuration conf) {
             this.conf = conf;
-            String comparatorType = conf.get(CassSstableReducer.COLUMN_TYPE);
+            String comparatorType = conf.get("aegisthus.columntype");
             try {
                 comparator = TypeParser.parse(comparatorType);
             } catch (SyntaxException e) {
