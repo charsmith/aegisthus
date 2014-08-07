@@ -120,8 +120,6 @@ public class CassSstableReducer extends Reducer<CompositeKey, AtomWritable, Text
     private static final Log LOG = LogFactory.getLog(CassSstableReducer.class);
     public static final String COLUMN_TYPE = "aegisthus.columntype";
 
-    public static final String KEY_TYPE = "aegisthus.keytype";
-
     FSDataOutputStream dos;
 
     Reduce reduce;
