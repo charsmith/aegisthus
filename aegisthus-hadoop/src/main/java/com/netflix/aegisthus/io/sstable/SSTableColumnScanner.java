@@ -20,6 +20,7 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.apache.cassandra.db.ColumnSerializer;
@@ -167,10 +168,11 @@ public class SSTableColumnScanner extends SSTableReader {
     }
 
     public rx.Observable<AtomWritable> observable() {
+        final ExecutorService service = Executors.newSingleThreadExecutor();
         rx.Observable<AtomWritable> ret = rx.Observable.create(new OnSubscribe<AtomWritable>() {
             @Override
             public void call(final Subscriber<? super AtomWritable> subscriber) {
-                Executors.newSingleThreadExecutor().execute(new Runnable() {
+                service.execute(new Runnable() {
                     @Override
                     public void run() {
                         deserialize(subscriber);
