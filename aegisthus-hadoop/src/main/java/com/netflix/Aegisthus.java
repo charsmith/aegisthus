@@ -51,7 +51,6 @@ import org.apache.hadoop.util.ToolRunner;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import com.netflix.aegisthus.input.AegisthusInputFormat;
 import com.netflix.aegisthus.io.writable.AtomWritable;
 import com.netflix.aegisthus.io.writable.CompositeKey;
 import com.netflix.aegisthus.mapred.reduce.CassReducer;
