@@ -127,7 +127,7 @@ public class Aegisthus extends Configured implements Tool {
 
     private static final String OPT_INPUT = "input";
     private static final String OPT_INPUTDIR = "inputDir";
-    private static final String OPT_INPUTFORMATNAME = "inputFormatClassName";
+    private static final String OPT_INPUTFORMATCLASSNAME = "inputFormatClassName";
     private static final String OPT_OUTPUT = "output";
 
     public static void main(String[] args) throws Exception {
@@ -169,10 +169,10 @@ public class Aegisthus extends Configured implements Tool {
                 .withDescription("a directory from which we will recursively pull sstables")
                 .hasArgs()
                 .create(OPT_INPUTDIR));
-        opts.addOption(OptionBuilder.withArgName(OPT_INPUTFORMATNAME)
+        opts.addOption(OptionBuilder.withArgName(OPT_INPUTFORMATCLASSNAME)
                 .withDescription("full class name to use for the input format class")
                 .hasArg()
-                .create(OPT_INPUTFORMATNAME));
+                .create(OPT_INPUTFORMATCLASSNAME));
         CommandLineParser parser = new GnuParser();
 
         try {
@@ -204,7 +204,7 @@ public class Aegisthus extends Configured implements Tool {
         }
 
         String inputFormatClassName = cl.getOptionValue(
-                OPT_INPUTFORMATNAME, "com.netflix.aegisthus.input.AegisthusInputFormat"
+                OPT_INPUTFORMATCLASSNAME, "com.netflix.aegisthus.input.AegisthusInputFormat"
         );
         @SuppressWarnings("unchecked")
         Class<InputFormat> inputFormatClass = (Class<InputFormat>) Class.forName(inputFormatClassName);
