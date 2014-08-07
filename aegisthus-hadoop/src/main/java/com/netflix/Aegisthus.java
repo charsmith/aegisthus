@@ -202,13 +202,9 @@ public class Aegisthus extends Configured implements Tool {
             return 1;
         }
 
-        String inputFormatClassName = cl.getOptionValue(
-                OPT_INPUTFORMATCLASSNAME, "com.netflix.aegisthus.input.AegisthusInputFormat"
-        );
-        @SuppressWarnings("unchecked")
-        Class<InputFormat> inputFormatClass = (Class<InputFormat>) Class.forName(inputFormatClassName);
-
-        job.setInputFormatClass(inputFormatClass);
+        job.setInputFormatClass((Class<InputFormat>) Class.forName(
+                cl.getOptionValue(OPT_INPUTFORMATCLASSNAME, "com.netflix.aegisthus.input.AegisthusInputFormat")
+        ));
         job.setMapOutputKeyClass(CompositeKey.class);
         job.setMapOutputValueClass(AtomWritable.class);
         job.setOutputFormatClass(TextOutputFormat.class);
