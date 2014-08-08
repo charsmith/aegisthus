@@ -38,13 +38,13 @@ import rx.exceptions.OnErrorThrowable;
 import rx.functions.Func1;
 
 import com.netflix.aegisthus.columnar_input.splits.AegSplit;
-import com.netflix.aegisthus.io.commitlog.CommitLogScanner;
+import com.netflix.aegisthus.io.commitlog.CommitLogColumnarScanner;
 import com.netflix.aegisthus.io.writable.AtomWritable;
 import com.netflix.aegisthus.io.writable.CompositeKey;
 
 public class CommitLogRecordReader extends AegisthusRecordReader {
     private static final Log LOG = LogFactory.getLog(AegisthusRecordReader.class);
-    protected CommitLogScanner scanner;
+    protected CommitLogColumnarScanner scanner;
     protected int cfId;
     private Iterator<AtomWritable> iterator = null;
 
@@ -75,7 +75,7 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
             FileSystem fs = file.getFileSystem(ctx.getConfiguration());
             FSDataInputStream fileIn = fs.open(split.getPath());
             InputStream dis = new BufferedInputStream(fileIn);
-            scanner = new CommitLogScanner(new DataInputStream(dis),
+            scanner = new CommitLogColumnarScanner(new DataInputStream(dis),
                     Descriptor.fromFilename(split.getPath().getName()).version, cfId);
             this.pos = start;
             iterator = scanner.observable()
