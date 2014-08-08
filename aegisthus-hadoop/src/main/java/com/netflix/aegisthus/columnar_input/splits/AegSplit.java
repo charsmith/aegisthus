@@ -94,8 +94,7 @@ public class AegSplit extends InputSplit implements Writable {
 	public InputStream getInput(Configuration conf) throws IOException {
 		FileSystem fs = path.getFileSystem(conf);
 		FSDataInputStream fileIn = fs.open(path);
-		InputStream dis = new DataInputStream(new BufferedInputStream(fileIn));
-		return dis;
+        return new DataInputStream(new BufferedInputStream(fileIn));
 	}
 	
 	public InputStream getIndexInput(Configuration conf) throws IOException {

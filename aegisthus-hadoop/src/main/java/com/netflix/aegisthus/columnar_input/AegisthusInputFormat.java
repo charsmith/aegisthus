@@ -18,9 +18,7 @@ package com.netflix.aegisthus.columnar_input;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 
-import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.utils.Pair;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -53,8 +51,6 @@ import com.netflix.aegisthus.io.writable.CompositeKey;
  */
 public class AegisthusInputFormat extends FileInputFormat<CompositeKey, AtomWritable> {
     private static final Log LOG = LogFactory.getLog(AegisthusInputFormat.class);
-    @SuppressWarnings("rawtypes")
-    protected Map<String, AbstractType> convertors;
 
     @Override
     public RecordReader<CompositeKey, AtomWritable> createRecordReader(InputSplit inputSplit, TaskAttemptContext context) {
@@ -111,7 +107,7 @@ public class AegisthusInputFormat extends FileInputFormat<CompositeKey, AtomWrit
                 long splitStart = 0;
                 long indexOffset = 0;
                 long newIndexOffset = 0;
-                while (splitStart + fuzzySplit < length && scanner.hasNext()) {
+                while (splitStart + fuzzySplit < length && scanner != null && scanner.hasNext()) {
                     long splitSize = 0;
                     // The scanner returns an offset from the start of the file.
                     while (splitSize < maxSplitSize && scanner.hasNext()) {

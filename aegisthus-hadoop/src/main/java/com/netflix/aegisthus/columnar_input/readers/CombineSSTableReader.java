@@ -45,7 +45,7 @@ public class CombineSSTableReader extends AegisthusRecordReader {
 				resp = reader.nextKeyValue();
 			}
 		}
-		if (resp == true) {
+		if (resp) {
 			key = reader.key;
 			value = reader.value;
 		}

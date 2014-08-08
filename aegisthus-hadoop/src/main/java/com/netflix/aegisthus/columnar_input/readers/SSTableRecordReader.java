@@ -39,7 +39,6 @@ import com.netflix.aegisthus.io.writable.CompositeKey;
 public class SSTableRecordReader extends AegisthusRecordReader {
     private static final Log LOG = LogFactory.getLog(SSTableRecordReader.class);
     private SSTableColumnScanner scanner;
-    private String filename = null;
     private Iterator<AtomWritable> iterator = null;
 
     @Override
@@ -58,14 +57,14 @@ public class SSTableRecordReader extends AegisthusRecordReader {
         start = split.getStart();
         InputStream is = split.getInput(ctx.getConfiguration());
         end = split.getDataEnd();
-        filename = split.getPath().toUri().toString();
+        String filename = split.getPath().toUri().toString();
 
         LOG.info(String.format("File: %s", split.getPath().toUri().getPath()));
         LOG.info("Start: " + start);
         LOG.info("End: " + end);
 
         try {
-            DataInput indexInput = null;
+            DataInput indexInput;
             if (inputSplit instanceof AegIndexedSplit) {
                 AegIndexedSplit indexedSplit = (AegIndexedSplit) inputSplit;
                 indexInput = new DataInputStream(indexedSplit.getIndexInput(ctx.getConfiguration()));

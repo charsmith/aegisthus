@@ -20,7 +20,7 @@ import com.netflix.aegisthus.columnar_input.splits.AegSplit;
  */
 public class AegisthusCombinedInputFormat extends AegisthusInputFormat {
 	private static final Log LOG = LogFactory.getLog(AegisthusCombinedInputFormat.class);
-	private int maxSplitSize = 104857600;
+	private static final int MAX_SPLIT_SIZE = 104857600;
 
 	@Override
 	public List<InputSplit> getSplits(JobContext job) throws IOException {
@@ -35,7 +35,7 @@ public class AegisthusCombinedInputFormat extends AegisthusInputFormat {
 			switch (aegSplit.getType()) {
 			case sstable:
 				cnt++;
-				if (aegSplit.getLength() >= maxSplitSize) {
+				if (aegSplit.getLength() >= MAX_SPLIT_SIZE) {
 					cntAdded++;
 					combinedSplits.add(aegSplit);
 					continue;
@@ -48,7 +48,7 @@ public class AegisthusCombinedInputFormat extends AegisthusInputFormat {
 							AegCombinedSplit temp = map.get(location);
 							cntAdded++;
 							temp.getSplits().add(aegSplit);
-							if (temp.getLength() >= maxSplitSize) {
+							if (temp.getLength() >= MAX_SPLIT_SIZE) {
 								combinedSplits.add(temp);
 								map.remove(location);
 							}

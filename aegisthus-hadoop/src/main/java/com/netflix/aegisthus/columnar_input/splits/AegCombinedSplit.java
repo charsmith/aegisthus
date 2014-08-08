@@ -13,10 +13,10 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
 public class AegCombinedSplit extends InputSplit implements Writable {
-	List<AegSplit> splits = Lists.newArrayList();
+	private final List<AegSplit> splits = Lists.newArrayList();
 
 	public AegCombinedSplit() {
-	};
+	}
 
 	public AegCombinedSplit(AegSplit split) {
 		splits.add(split);
@@ -63,7 +63,7 @@ public class AegCombinedSplit extends InputSplit implements Writable {
 		if (locations == null) {
 			return null;
 		}
-		return locations.toArray(new String[0]);
+		return locations.toArray(new String[locations.size()]);
 	}
 
 	public List<AegSplit> getSplits() {

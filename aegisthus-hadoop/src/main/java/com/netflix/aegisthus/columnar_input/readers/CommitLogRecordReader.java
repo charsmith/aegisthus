@@ -43,7 +43,7 @@ import com.netflix.aegisthus.io.writable.AtomWritable;
 import com.netflix.aegisthus.io.writable.CompositeKey;
 
 public class CommitLogRecordReader extends AegisthusRecordReader {
-    private static final Log LOG = LogFactory.getLog(AegisthusRecordReader.class);
+    private static final Log LOG = LogFactory.getLog(CommitLogRecordReader.class);
     protected CommitLogColumnarScanner scanner;
     protected int cfId;
     private Iterator<AtomWritable> iterator = null;
@@ -84,7 +84,7 @@ public class CommitLogRecordReader extends AegisthusRecordReader {
                         public Observable<? extends AtomWritable> call(OnErrorThrowable onErrorThrowable) {
                             LOG.error("failure deserializing", onErrorThrowable);
                             if (ctx instanceof TaskInputOutputContext) {
-                                ((TaskInputOutputContext) ctx).getCounter("aegisthus",
+                                ctx.getCounter("aegisthus",
                                         onErrorThrowable.getCause().getClass().getSimpleName()).increment(1L);
                             }
                             return Observable.empty();
