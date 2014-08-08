@@ -68,7 +68,7 @@ public class Aegisthus extends Configured implements Tool {
     public static class Partition extends Partitioner<CompositeKey, AtomWritable> {
         @Override
         public int getPartition(CompositeKey key, AtomWritable value, int numPartitions) {
-            return key.getKey().hashCode() % numPartitions;
+            return Math.abs(key.getKey().hashCode() % numPartitions);
         }
 
     }
