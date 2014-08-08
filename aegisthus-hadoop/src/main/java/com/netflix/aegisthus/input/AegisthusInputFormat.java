@@ -26,6 +26,7 @@ import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.TypeParser;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.SyntaxException;
+import org.apache.cassandra.utils.Pair;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.BlockLocation;
@@ -152,7 +153,8 @@ public class AegisthusInputFormat extends FileInputFormat<Text, Text> {
 					long splitSize = 0;
 					// The scanner returns an offset from the start of the file.
 					while (splitSize < maxSplitSize && scanner.hasNext()) {
-						splitSize = scanner.next() - splitStart;
+                        Pair<Long, Long> pair = scanner.next();
+                        splitSize = pair.left - splitStart;
 					}
 					int blkIndex = getBlockIndex(blkLocations, splitStart + (splitSize / 2));
 					LOG.info("split path: " + path.getName() + ":" + splitStart + ":" + splitSize);
