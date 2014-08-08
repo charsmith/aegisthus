@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.netflix.aegisthus.input;
+package com.netflix.aegisthus.columnar_input;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -36,13 +36,13 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 
 import com.google.common.collect.Lists;
-import com.netflix.aegisthus.input.readers.CombineSSTableReader;
-import com.netflix.aegisthus.input.readers.CommitLogRecordReader;
-import com.netflix.aegisthus.input.readers.SSTableRecordReader;
-import com.netflix.aegisthus.input.splits.AegCombinedSplit;
-import com.netflix.aegisthus.input.splits.AegCompressedSplit;
-import com.netflix.aegisthus.input.splits.AegSplit;
-import com.netflix.aegisthus.input.splits.AegSplit.Type;
+import com.netflix.aegisthus.columnar_input.readers.CombineSSTableReader;
+import com.netflix.aegisthus.columnar_input.readers.CommitLogRecordReader;
+import com.netflix.aegisthus.columnar_input.readers.SSTableRecordReader;
+import com.netflix.aegisthus.columnar_input.splits.AegCombinedSplit;
+import com.netflix.aegisthus.columnar_input.splits.AegCompressedSplit;
+import com.netflix.aegisthus.columnar_input.splits.AegSplit;
+import com.netflix.aegisthus.columnar_input.splits.AegSplit.Type;
 import com.netflix.aegisthus.io.sstable.OffsetScanner;
 import com.netflix.aegisthus.io.writable.AtomWritable;
 import com.netflix.aegisthus.io.writable.CompositeKey;

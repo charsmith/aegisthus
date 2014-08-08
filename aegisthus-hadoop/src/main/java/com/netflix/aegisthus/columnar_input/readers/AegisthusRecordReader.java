@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.netflix.aegisthus.input.readers;
+package com.netflix.aegisthus.columnar_input.readers;
 
 import java.io.IOException;
 

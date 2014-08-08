@@ -1,4 +1,4 @@
-package com.netflix.aegisthus.input;
+package com.netflix.aegisthus.columnar_input;
 
 import java.io.IOException;
 import java.util.List;
@@ -11,8 +11,8 @@ import org.apache.hadoop.mapreduce.JobContext;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.netflix.aegisthus.input.splits.AegCombinedSplit;
-import com.netflix.aegisthus.input.splits.AegSplit;
+import com.netflix.aegisthus.columnar_input.splits.AegCombinedSplit;
+import com.netflix.aegisthus.columnar_input.splits.AegSplit;
 
 /**
  * This class takes the splits created by the AegisthusInputFormat and combines

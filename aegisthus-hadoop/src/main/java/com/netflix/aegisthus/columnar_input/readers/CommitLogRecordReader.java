@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.netflix.aegisthus.input.readers;
+package com.netflix.aegisthus.columnar_input.readers;
 
-import java.io.DataInput;
+import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.IOError;
 import java.io.IOException;
@@ -26,20 +26,26 @@ import java.util.Iterator;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.mapreduce.TaskInputOutputContext;
 
-import com.netflix.aegisthus.input.splits.AegIndexedSplit;
-import com.netflix.aegisthus.input.splits.AegSplit;
-import com.netflix.aegisthus.io.sstable.IndexedSSTableScanner;
-import com.netflix.aegisthus.io.sstable.SSTableColumnScanner;
+import rx.Observable;
+import rx.exceptions.OnErrorThrowable;
+import rx.functions.Func1;
+
+import com.netflix.aegisthus.columnar_input.splits.AegSplit;
+import com.netflix.aegisthus.io.commitlog.CommitLogScanner;
 import com.netflix.aegisthus.io.writable.AtomWritable;
 import com.netflix.aegisthus.io.writable.CompositeKey;
 
-public class SSTableRecordReader extends AegisthusRecordReader {
-    private static final Log LOG = LogFactory.getLog(SSTableRecordReader.class);
-    private SSTableColumnScanner scanner;
-    private String filename = null;
+public class CommitLogRecordReader extends AegisthusRecordReader {
+    private static final Log LOG = LogFactory.getLog(AegisthusRecordReader.class);
+    protected CommitLogScanner scanner;
+    protected int cfId;
     private Iterator<AtomWritable> iterator = null;
 
     @Override
@@ -50,50 +56,43 @@ public class SSTableRecordReader extends AegisthusRecordReader {
         }
     }
 
+    @SuppressWarnings("rawtypes")
     @Override
     public void initialize(InputSplit inputSplit, final TaskAttemptContext ctx) throws IOException,
             InterruptedException {
         AegSplit split = (AegSplit) inputSplit;
 
         start = split.getStart();
-        InputStream is = split.getInput(ctx.getConfiguration());
-        end = split.getDataEnd();
-        filename = split.getPath().toUri().toString();
-
-        LOG.info(String.format("File: %s", split.getPath().toUri().getPath()));
-        LOG.info("Start: " + start);
-        LOG.info("End: " + end);
+        end = split.getEnd();
+        final Path file = split.getPath();
 
         try {
-            DataInput indexInput = null;
-            if (inputSplit instanceof AegIndexedSplit) {
-                AegIndexedSplit indexedSplit = (AegIndexedSplit) inputSplit;
-                indexInput = new DataInputStream(indexedSplit.getIndexInput(ctx.getConfiguration()));
-                scanner = new IndexedSSTableScanner(is, end, Descriptor.fromFilename(filename).version, indexInput);
-            } else {
-                scanner = new SSTableColumnScanner(is, end, Descriptor.fromFilename(filename).version);
+            cfId = ctx.getConfiguration().getInt("commitlog.cfid", -1000);
+            if (cfId == -1000) {
+                throw new IOException("commitlog.cfid must be set");
             }
-            LOG.info("skipping to start: " + start);
-            scanner.skipUnsafe(start);
+            // open the file and seek to the start of the split
+            FileSystem fs = file.getFileSystem(ctx.getConfiguration());
+            FSDataInputStream fileIn = fs.open(split.getPath());
+            InputStream dis = new BufferedInputStream(fileIn);
+            scanner = new CommitLogScanner(new DataInputStream(dis),
+                    Descriptor.fromFilename(split.getPath().getName()).version, cfId);
             this.pos = start;
-            LOG.info("Creating observable");
             iterator = scanner.observable()
-            //TODO: This code should be included when we want to add skipping error rows.
-            /*.onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends Column>>() {
-                @Override
-                public Observable<? extends Column> call(OnErrorThrowable onErrorThrowable) {
-                    LOG.error("failure deserializing", onErrorThrowable);
-                    if (ctx instanceof TaskInputOutputContext) {
-                        ((TaskInputOutputContext) ctx).getCounter("aegisthus",
-                                onErrorThrowable.getCause().getClass().getSimpleName()).increment(1L);
-                    }
-                    return Observable.empty();
-                }
-            })*/
+                    .onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends AtomWritable>>() {
+                        @Override
+                        public Observable<? extends AtomWritable> call(OnErrorThrowable onErrorThrowable) {
+                            LOG.error("failure deserializing", onErrorThrowable);
+                            if (ctx instanceof TaskInputOutputContext) {
+                                ((TaskInputOutputContext) ctx).getCounter("aegisthus",
+                                        onErrorThrowable.getCause().getClass().getSimpleName()).increment(1L);
+                            }
+                            return Observable.empty();
+                        }
+                    })
                     .toBlocking()
                     .toIterable()
                     .iterator();
-            LOG.info("done initializing");
         } catch (IOException e) {
             throw new IOError(e);
         }
@@ -113,4 +112,5 @@ public class SSTableRecordReader extends AegisthusRecordReader {
         value = atomWritable;
         return true;
     }
+
 }

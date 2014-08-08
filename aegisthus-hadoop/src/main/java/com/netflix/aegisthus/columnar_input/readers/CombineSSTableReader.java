@@ -1,4 +1,4 @@
-package com.netflix.aegisthus.input.readers;
+package com.netflix.aegisthus.columnar_input.readers;
 
 import java.io.IOException;
 
@@ -7,7 +7,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 
-import com.netflix.aegisthus.input.splits.AegCombinedSplit;
+import com.netflix.aegisthus.columnar_input.splits.AegCombinedSplit;
 
 public class CombineSSTableReader extends AegisthusRecordReader {
 	private static final Log LOG = LogFactory.getLog(CombineSSTableReader.class);
