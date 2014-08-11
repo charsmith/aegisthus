@@ -20,7 +20,7 @@ import java.util.List;
 
 import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
-import com.netflix.aegisthus.columnar_input.AegisthusInputFormat;
+import com.netflix.aegisthus.input.AegisthusInputFormat;
 import org.apache.hadoop.mapreduce.InputFormat;
 import org.apache.hadoop.mapreduce.RecordReader;
 import org.apache.pig.LoadMetadata;
