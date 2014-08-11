@@ -102,7 +102,7 @@ public class CassSSTableReducer extends Reducer<CompositeKey, AtomWritable, Text
         public void writeRow(DataOutput dos) throws IOException {
             dos.writeShort(this.key.length);
             dos.write(this.key);
-            long dataSize = 0;
+            long dataSize = 16; // The bytes for the Int, Long, Int after this loop
             for (OnDiskAtom atom : columns) {
                 dataSize += atom.serializedSizeForSSTable();
             }
