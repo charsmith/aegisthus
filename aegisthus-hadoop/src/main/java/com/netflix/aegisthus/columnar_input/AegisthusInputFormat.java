@@ -20,8 +20,6 @@ import java.io.IOException;
 import java.util.List;
 
 import org.apache.cassandra.utils.Pair;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.BlockLocation;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileStatus;
@@ -32,6 +30,8 @@ import org.apache.hadoop.mapreduce.JobContext;
 import org.apache.hadoop.mapreduce.RecordReader;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
 import com.netflix.aegisthus.columnar_input.readers.CombineSSTableReader;
@@ -50,7 +50,7 @@ import com.netflix.aegisthus.io.writable.CompositeKey;
  * commitlogs and json.
  */
 public class AegisthusInputFormat extends FileInputFormat<CompositeKey, AtomWritable> {
-    private static final Log LOG = LogFactory.getLog(AegisthusInputFormat.class);
+    private static final Logger LOG = LoggerFactory.getLogger(AegisthusInputFormat.class);
 
     @Override
     public RecordReader<CompositeKey, AtomWritable> createRecordReader(InputSplit inputSplit, TaskAttemptContext context) {
@@ -117,7 +117,7 @@ public class AegisthusInputFormat extends FileInputFormat<CompositeKey, AtomWrit
                             
                     }
                     int blkIndex = getBlockIndex(blkLocations, splitStart + (splitSize / 2));
-                    LOG.info("split path: " + path.getName() + ":" + splitStart + ":" + splitSize);
+                    LOG.debug("split path: {}:{}:{}", path.getName(), splitStart, splitSize);
                     splits.add(new AegSplit(path, splitStart, splitSize, blkLocations[blkIndex].getHosts()));
                     indexOffset = newIndexOffset;
                     bytesRemaining -= splitSize;
@@ -129,7 +129,7 @@ public class AegisthusInputFormat extends FileInputFormat<CompositeKey, AtomWrit
             }
 
             if (bytesRemaining != 0) {
-                LOG.info("end path: " + path.getName() + ":" + (length - bytesRemaining) + ":" + bytesRemaining);
+                LOG.debug("end path: {}:{}:{}", path.getName(), length - bytesRemaining, bytesRemaining);
                 if (fs.exists(compressionPath)) {
                     splits.add(new AegCompressedSplit(path, length - bytesRemaining, bytesRemaining,
                             blkLocations[blkLocations.length - 1].getHosts(), compressionPath));
@@ -139,7 +139,7 @@ public class AegisthusInputFormat extends FileInputFormat<CompositeKey, AtomWrit
                 }
             }
         } else {
-            LOG.info("skipping zero length file: " + path.toString());
+            LOG.info("skipping zero length file: {}", path.toString());
         }
     }
 
