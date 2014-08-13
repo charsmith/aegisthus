@@ -18,7 +18,6 @@ package com.netflix.aegisthus.input;
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -61,6 +60,7 @@ public class AegisthusInputFormat extends FileInputFormat<Text, Text> {
 	public static final String KEY_TYPE = "aegisthus.keytype";
 	@SuppressWarnings("rawtypes")
 	protected Map<String, AbstractType> convertors;
+	private List<FileStatus> overrideListStatus = null;
 
 	@Override
 	public RecordReader<Text, Text> createRecordReader(InputSplit inputSplit, TaskAttemptContext context) {
@@ -218,5 +218,26 @@ public class AegisthusInputFormat extends FileInputFormat<Text, Text> {
 			}
 		}
 		return splits;
+	}
+
+	/**
+	 * If we have been given a list of statuses to operate on, use those instead of falling back to the base method.
+	 */
+	@Override
+	protected List<FileStatus> listStatus(JobContext job) throws IOException {
+		if (overrideListStatus == null) {
+			return super.listStatus(job);
+		} else {
+			return overrideListStatus;
+		}
+	}
+
+	/**
+	 * Instead of using the base listStatus, return this list of file statuses
+	 *
+	 * @param overrideListStatus the list of statuses to be returned for all future calls to this.listStatus()
+	 */
+	public void setOverrideListStatus(List<FileStatus> overrideListStatus) {
+		this.overrideListStatus = overrideListStatus;
 	}
 }
