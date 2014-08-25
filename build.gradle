@@ -127,14 +127,14 @@ def includeHadoopLibs(project) {
     hadoopVersion = hadoopVersion ?: '1.1.0'
     if (hadoopVersion.startsWith('1')) {
         project.dependencies {
-            compile 'org.apache.hadoop:hadoop-core:' + hadoopVersion
+            compile "org.apache.hadoop:hadoop-core:$hadoopVersion"
         }
     } else {
         project.dependencies {
-            compile 'org.apache.hadoop:hadoop-common:' + hadoopVersion
-            compile 'org.apache.hadoop:hadoop-hdfs:' + hadoopVersion
-            compile 'org.apache.hadoop:hadoop-mapreduce-client-core:' + hadoopVersion
-            compile 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:' + hadoopVersion
+            compile "org.apache.hadoop:hadoop-common:$hadoopVersion"
+            compile "org.apache.hadoop:hadoop-hdfs:$hadoopVersion"
+            compile "org.apache.hadoop:hadoop-mapreduce-client-core:$hadoopVersion"
+            compile "org.apache.hadoop:hadoop-mapreduce-client-jobclient:$hadoopVersion"
         }
     }
 }
