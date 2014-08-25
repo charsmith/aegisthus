@@ -49,14 +49,19 @@ import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.netflix.aegisthus.io.writable.AtomWritable;
 import com.netflix.aegisthus.io.writable.CompositeKey;
 import com.netflix.aegisthus.tools.DirectoryWalker;
+import com.netflix.aegisthus.tools.StorageHelper;
+import com.netflix.hadoop.output.CleanOutputFormat;
 
 public class Aegisthus extends Configured implements Tool {
+    private static final Logger LOG = LoggerFactory.getLogger(Aegisthus.class);
     public static class Map extends Mapper<CompositeKey, AtomWritable, CompositeKey, AtomWritable> {
         @Override
         protected void map(CompositeKey key, AtomWritable value, Context context) throws IOException,
@@ -212,7 +217,7 @@ public class Aegisthus extends Configured implements Tool {
         ));
         job.setMapOutputKeyClass(CompositeKey.class);
         job.setMapOutputValueClass(AtomWritable.class);
-        job.setOutputFormatClass(TextOutputFormat.class);
+        job.setOutputFormatClass(CleanOutputFormat.class);
         job.setMapperClass(Map.class);
         job.setReducerClass((Class<Reducer>) Class.forName(
                 cl.getOptionValue(OPT_REDUCERCLASSNAME, "com.netflix.aegisthus.mapred.reduce.CassReducer")
@@ -221,11 +226,6 @@ public class Aegisthus extends Configured implements Tool {
         job.setPartitionerClass(Partition.class);
         job.setSortComparatorClass(CompositeKeyComparator.class);
 
-        job.getConfiguration().set("aegisthus.output.location", cl.getOptionValue(OPT_OUTPUT));
-        // turn off speculation, as right now we are writing to the final
-        // output.
-        // That will have to change in the final code due to S3 considerations.
-        job.getConfiguration().setBoolean("mapred.reduce.tasks.speculative.execution", false);
         List<Path> paths = Lists.newArrayList();
         if (cl.hasOption(OPT_INPUT)) {
             for (String input : cl.getOptionValues(OPT_INPUT)) {
@@ -238,6 +238,10 @@ public class Aegisthus extends Configured implements Tool {
         TextInputFormat.setInputPaths(job, paths.toArray(new Path[0]));
         Path temp = new Path("/tmp/" + UUID.randomUUID());
         TextOutputFormat.setOutputPath(job, temp);
+
+        StorageHelper sh = new StorageHelper(job.getConfiguration());
+        sh.setFinalPath(cl.getOptionValue(OPT_OUTPUT));
+        LOG.info("temp location for job: {}", sh.getBaseTempLocation());
 
         job.submit();
         System.out.println(job.getJobID());
