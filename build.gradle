@@ -65,6 +65,7 @@ project(':aegisthus-core') {
         compile 'org.apache.pig:pig:0.11.1'
         compile 'org.slf4j:slf4j-api:1.6.3'
         includeHadoopLibs(project)
+
         configurations.compile.extendsFrom(configurations.includeInJar)
     }
     jar {
