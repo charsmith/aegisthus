@@ -1,6 +1,10 @@
 // Establish version and status
 ext.githubProjectName = rootProject.name // Change if github project name is not the same as the root project's name
 
+project.ext {
+    buildWithNebulaPlugin = project.hasProperty('buildWithNebulaPlugin')
+}
+
 buildscript {
     repositories {
         mavenCentral()
@@ -9,6 +13,11 @@ buildscript {
 }
 
 allprojects {
+    if (rootProject.buildWithNebulaPlugin) {
+        apply plugin: 'nebula'
+        apply plugin: 'java'
+    }
+
     configurations {
         includeInJar
     }
@@ -21,11 +30,13 @@ allprojects {
     }
 }
 
-apply from: file('gradle/convention.gradle')
-apply from: file('gradle/maven.gradle')
-//apply from: file('gradle/check.gradle')
-//apply from: file('gradle/license.gradle')
-apply from: file('gradle/release.gradle')
+if (!buildWithNebulaPlugin) {
+    apply from: file('gradle/convention.gradle')
+    apply from: file('gradle/maven.gradle')
+    //apply from: file('gradle/check.gradle')
+    //apply from: file('gradle/license.gradle')
+    apply from: file('gradle/release.gradle')
+}
 
 subprojects {
     group = "com.netflix.${githubProjectName}" // TEMPLATE: Set to organization of project
