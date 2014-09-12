@@ -3,7 +3,7 @@ ext.githubProjectName = rootProject.name // Change if github project name is not
 
 buildscript {
     repositories {
-        mavenCentral() 
+        mavenCentral()
     }
     apply from: file('gradle/buildscript.gradle'), to: buildscript
 }
@@ -12,8 +12,8 @@ allprojects {
     configurations {
         includeInJar
     }
-    repositories { 
-        mavenCentral() 
+    repositories {
+        mavenCentral()
     }
     tasks.withType(JavaCompile) {
         sourceCompatibility = "1.6"
