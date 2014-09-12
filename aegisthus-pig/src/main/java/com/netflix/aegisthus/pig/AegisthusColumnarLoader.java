@@ -18,9 +18,6 @@ package com.netflix.aegisthus.pig;
 import java.io.IOException;
 import java.util.List;
 
-import com.google.common.base.Throwables;
-import com.google.common.collect.Lists;
-import com.netflix.aegisthus.input.AegisthusInputFormat;
 import org.apache.hadoop.mapreduce.InputFormat;
 import org.apache.hadoop.mapreduce.RecordReader;
 import org.apache.pig.LoadMetadata;
@@ -29,25 +26,26 @@ import org.apache.pig.builtin.PigStorage;
 import org.apache.pig.data.Tuple;
 import org.apache.pig.data.TupleFactory;
 
+import com.google.common.base.Throwables;
+import com.google.common.collect.Lists;
+import com.netflix.aegisthus.input.AegisthusInputFormat;
 import com.netflix.aegisthus.tools.AegisthusSerializer;
 
 /**
  * Pig loader for sstable format.
  */
 public class AegisthusColumnarLoader extends PigStorage implements LoadMetadata {
-	private AegisthusSerializer serializer;
-	private RecordReader rr;
+    private AegisthusSerializer serializer;
+    private RecordReader rr;
 
-	public AegisthusColumnarLoader() {
-	}
+    public AegisthusColumnarLoader() {
+    }
 
-	
-	@SuppressWarnings("rawtypes")
+    @SuppressWarnings("rawtypes")
     @Override
     public InputFormat getInputFormat() {
         return new AegisthusInputFormat();
     }
-
 
     @Override
     public void prepareToRead(RecordReader reader, PigSplit split) {
@@ -55,9 +53,8 @@ public class AegisthusColumnarLoader extends PigStorage implements LoadMetadata 
         super.prepareToRead(reader, split);
     }
 
-
     @Override
-	public Tuple getNext() throws IOException {
+    public Tuple getNext() throws IOException {
         List<String> t = Lists.newArrayList();
         try {
             if (rr.nextKeyValue()) {
@@ -70,5 +67,5 @@ public class AegisthusColumnarLoader extends PigStorage implements LoadMetadata 
             throw Throwables.propagate(e);
         }
         return null;
-	}
+    }
 }

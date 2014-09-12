@@ -77,7 +77,7 @@ public class SSTableRecordReader extends AegisthusRecordReader {
             this.pos = start;
             LOG.info("Creating observable");
             iterator = scanner.observable()
-            //TODO: This code should be included when we want to add skipping error rows.
+                    //TODO: This code should be included when we want to add skipping error rows.
             /*.onErrorFlatMap(new Func1<OnErrorThrowable, Observable<? extends Column>>() {
                 @Override
                 public Observable<? extends Column> call(OnErrorThrowable onErrorThrowable) {

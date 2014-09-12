@@ -114,7 +114,7 @@ public class AegisthusInputFormat extends FileInputFormat<CompositeKey, AtomWrit
                         Pair<Long, Long> pair = scanner.next();
                         splitSize = pair.left - splitStart;
                         newIndexOffset = pair.right;
-                            
+
                     }
                     int blkIndex = getBlockIndex(blkLocations, splitStart + (splitSize / 2));
                     LOG.debug("split path: {}:{}:{}", path.getName(), splitStart, splitSize);

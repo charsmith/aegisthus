@@ -23,33 +23,33 @@ import com.netflix.aegisthus.io.writable.AtomWritable;
 import com.netflix.aegisthus.io.writable.CompositeKey;
 
 public abstract class AegisthusRecordReader extends RecordReader<CompositeKey, AtomWritable> {
-	protected long start;
-	protected long end;
-	protected long pos;
-	protected CompositeKey key = null;
-	protected AtomWritable value = null;
-	
-	@Override
-	public void close() throws IOException {
-	}
-	
-	@Override
-	public CompositeKey getCurrentKey() throws IOException, InterruptedException {
-		return key;
-	}
+    protected long start;
+    protected long end;
+    protected long pos;
+    protected CompositeKey key = null;
+    protected AtomWritable value = null;
 
-	@Override
-	public AtomWritable getCurrentValue() throws IOException, InterruptedException {
-		return value;
-	}
+    @Override
+    public void close() throws IOException {
+    }
 
-	@Override
-	public float getProgress() throws IOException, InterruptedException {
-		if (start == end) {
-			return 0.0f;
-		} else {
-			return Math.min(1.0f, (pos - start) / (float) (end - start));
-		}
-	}
+    @Override
+    public CompositeKey getCurrentKey() throws IOException, InterruptedException {
+        return key;
+    }
+
+    @Override
+    public AtomWritable getCurrentValue() throws IOException, InterruptedException {
+        return value;
+    }
+
+    @Override
+    public float getProgress() throws IOException, InterruptedException {
+        if (start == end) {
+            return 0.0f;
+        } else {
+            return Math.min(1.0f, (pos - start) / (float) (end - start));
+        }
+    }
 
 }

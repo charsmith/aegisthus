@@ -15,6 +15,10 @@
  */
 package com.netflix.aegisthus.columnar_input.readers;
 
+import rx.Observable;
+import rx.exceptions.OnErrorThrowable;
+import rx.functions.Func1;
+
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.IOError;
@@ -32,10 +36,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.TaskInputOutputContext;
-
-import rx.Observable;
-import rx.exceptions.OnErrorThrowable;
-import rx.functions.Func1;
 
 import com.netflix.aegisthus.columnar_input.splits.AegSplit;
 import com.netflix.aegisthus.io.commitlog.CommitLogColumnarScanner;
