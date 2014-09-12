@@ -3,6 +3,7 @@ ext.githubProjectName = rootProject.name // Change if github project name is not
 
 project.ext {
     buildWithNebulaPlugin = project.hasProperty('buildWithNebulaPlugin')
+    hadoopVersion = project.hasProperty('hadoopVersion') ? hadoopVersion : '2.4.1'
 }
 
 buildscript {
@@ -135,8 +136,7 @@ task wrapper(type: Wrapper) {
 
 // include correct hadoop libraries for version
 def includeHadoopLibs(project) {
-    def hadoopVersion = project.hasProperty('hadoopVersion') ? hadoopVersion : '2.4.1'
-    if (hadoopVersion.startsWith('1')) {
+    if (rootProject.hadoopVersion.startsWith('1')) {
         project.dependencies {
             compile "org.apache.hadoop:hadoop-core:$hadoopVersion"
         }
