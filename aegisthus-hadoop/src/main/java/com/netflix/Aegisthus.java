@@ -38,13 +38,12 @@ import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.io.WritableComparator;
-import org.apache.hadoop.mapreduce.InputFormat;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Partitioner;
-import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.Tool;
@@ -54,18 +53,30 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import com.netflix.aegisthus.columnar_input.AegisthusInputFormat;
+import com.netflix.aegisthus.input.AegisthusCombinedInputFormat;
 import com.netflix.aegisthus.io.writable.AtomWritable;
 import com.netflix.aegisthus.io.writable.CompositeKey;
+import com.netflix.aegisthus.mapred.reduce.CassReducer;
+import com.netflix.aegisthus.mapred.reduce.CassSSTableReducer;
+import com.netflix.aegisthus.output.AegisthusOutputFormat;
 import com.netflix.aegisthus.tools.DirectoryWalker;
 import com.netflix.aegisthus.tools.StorageHelper;
 import com.netflix.hadoop.output.CleanOutputFormat;
 
 public class Aegisthus extends Configured implements Tool {
     private static final Logger LOG = LoggerFactory.getLogger(Aegisthus.class);
-    public static class Map extends Mapper<CompositeKey, AtomWritable, CompositeKey, AtomWritable> {
+    public static class ColumnarMap extends Mapper<CompositeKey, AtomWritable, CompositeKey, AtomWritable> {
         @Override
         protected void map(CompositeKey key, AtomWritable value, Context context) throws IOException,
                 InterruptedException {
+            context.write(key, value);
+        }
+    }
+
+    public static class TextMap extends Mapper<Text, Text, Text, Text> {
+        @Override
+        protected void map(Text key, Text value, Context context) throws IOException, InterruptedException {
             context.write(key, value);
         }
     }
@@ -131,9 +142,8 @@ public class Aegisthus extends Configured implements Tool {
 
     private static final String OPT_INPUT = "input";
     private static final String OPT_INPUTDIR = "inputDir";
-    private static final String OPT_INPUTFORMATCLASSNAME = "inputFormatClassName";
     private static final String OPT_OUTPUT = "output";
-    private static final String OPT_REDUCERCLASSNAME = "reducerClassName";
+    private static final String OPT_PRODUCESSTABLE = "produceSSTable";
 
     public static void main(String[] args) throws Exception {
         int res = ToolRunner.run(new Configuration(), new Aegisthus(), args);
@@ -174,14 +184,9 @@ public class Aegisthus extends Configured implements Tool {
                 .withDescription("a directory from which we will recursively pull sstables")
                 .hasArgs()
                 .create(OPT_INPUTDIR));
-        opts.addOption(OptionBuilder.withArgName(OPT_INPUTFORMATCLASSNAME)
-                .withDescription("full class name to use for the input format class")
-                .hasArg()
-                .create(OPT_INPUTFORMATCLASSNAME));
-        opts.addOption(OptionBuilder.withArgName(OPT_REDUCERCLASSNAME)
-                .withDescription("full class name to use for the reducer class")
-                .hasArg()
-                .create(OPT_REDUCERCLASSNAME));
+        opts.addOption(OptionBuilder.withArgName(OPT_PRODUCESSTABLE)
+                .withDescription("produces sstable output (default is to produce json)")
+                .create(OPT_PRODUCESSTABLE));
         CommandLineParser parser = new GnuParser();
 
         try {
@@ -189,7 +194,7 @@ public class Aegisthus extends Configured implements Tool {
             if (!(cl.hasOption(OPT_INPUT) || cl.hasOption(OPT_INPUTDIR))) {
                 System.out.println("Must have either an input or inputDir option");
                 HelpFormatter formatter = new HelpFormatter();
-                formatter.printHelp(String.format("hadoop jar aegsithus.jar %s", Aegisthus.class.getName()), opts);
+                formatter.printHelp(String.format("hadoop jar aegisthus.jar %s", Aegisthus.class.getName()), opts);
                 return null;
             }
             return cl;
@@ -204,7 +209,7 @@ public class Aegisthus extends Configured implements Tool {
 
     @Override
     public int run(String[] args) throws Exception {
-        Job job = new Job(getConf());
+        Job job = Job.getInstance(getConf());
 
         job.setJarByClass(Aegisthus.class);
         CommandLine cl = getOptions(args);
@@ -212,16 +217,16 @@ public class Aegisthus extends Configured implements Tool {
             return 1;
         }
 
-        job.setInputFormatClass((Class<InputFormat>) Class.forName(
-                cl.getOptionValue(OPT_INPUTFORMATCLASSNAME, "com.netflix.aegisthus.input.AegisthusInputFormat")
-        ));
+        return cl.hasOption(OPT_PRODUCESSTABLE) ? runColumnar(job, cl) : runJson(job, cl);
+    }
+
+    public int runColumnar(Job job, CommandLine cl) throws Exception {
+        job.setInputFormatClass(AegisthusInputFormat.class);
         job.setMapOutputKeyClass(CompositeKey.class);
         job.setMapOutputValueClass(AtomWritable.class);
         job.setOutputFormatClass(CleanOutputFormat.class);
-        job.setMapperClass(Map.class);
-        job.setReducerClass((Class<Reducer>) Class.forName(
-                cl.getOptionValue(OPT_REDUCERCLASSNAME, "com.netflix.aegisthus.mapred.reduce.CassReducer")
-        ));
+        job.setMapperClass(ColumnarMap.class);
+        job.setReducerClass(CassSSTableReducer.class);
         job.setGroupingComparatorClass(RowKeyGroupingComparator.class);
         job.setPartitionerClass(Partition.class);
         job.setSortComparatorClass(CompositeKeyComparator.class);
@@ -235,7 +240,7 @@ public class Aegisthus extends Configured implements Tool {
         if (cl.hasOption(OPT_INPUTDIR)) {
             paths.addAll(getDataFiles(job.getConfiguration(), cl.getOptionValue(OPT_INPUTDIR)));
         }
-        TextInputFormat.setInputPaths(job, paths.toArray(new Path[0]));
+        TextInputFormat.setInputPaths(job, paths.toArray(new Path[paths.size()]));
         Path temp = new Path("/tmp/" + UUID.randomUUID());
         TextOutputFormat.setOutputPath(job, temp);
 
@@ -251,6 +256,40 @@ public class Aegisthus extends Configured implements Tool {
         if (fs.exists(temp)) {
             fs.delete(temp, true);
         }
+        return success ? 0 : 1;
+    }
+
+    public int runJson(Job job, CommandLine cl) throws Exception {
+        job.getConfiguration().set("aeg.temp.dir", "/tmp/" + UUID.randomUUID());
+        Path temp = new Path(job.getConfiguration().get("aeg.temp.dir"));
+        FileSystem fs = temp.getFileSystem(job.getConfiguration());
+        fs.mkdirs(temp);
+
+        job.setInputFormatClass(AegisthusCombinedInputFormat.class);
+        job.setMapOutputKeyClass(Text.class);
+        job.setMapOutputValueClass(Text.class);
+        job.setOutputFormatClass(AegisthusOutputFormat.class);
+        job.setMapperClass(TextMap.class);
+        job.setReducerClass(CassReducer.class);
+        List<Path> paths = Lists.newArrayList();
+        if (cl.hasOption(OPT_INPUT)) {
+            for (String input : cl.getOptionValues(OPT_INPUT)) {
+                job.getConfiguration().set("aegisthus.json.dir", input.replace("/*.gz", ""));
+                paths.add(new Path(input));
+            }
+        }
+        if (cl.hasOption(OPT_INPUTDIR)) {
+            paths.addAll(getDataFiles(job.getConfiguration(), cl.getOptionValue(OPT_INPUTDIR)));
+        }
+        TextInputFormat.setInputPaths(job, paths.toArray(new Path[paths.size()]));
+        AegisthusOutputFormat.setOutputPath(job, new Path(cl.getOptionValue(OPT_OUTPUT)));
+
+        job.submit();
+        System.out.println(job.getJobID());
+        System.out.println(job.getTrackingURL());
+
+        boolean success = job.waitForCompletion(true);
+        fs.delete(temp, true);
         return success ? 0 : 1;
     }
 }
