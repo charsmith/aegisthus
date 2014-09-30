@@ -148,7 +148,12 @@ public class Aegisthus extends Configured implements Tool {
     public static void main(String[] args) throws Exception {
         int res = ToolRunner.run(new Configuration(), new Aegisthus(), args);
 
-        System.exit(res);
+        boolean exit = Boolean.valueOf(System.getProperty("aegisthus.exit", "true"));
+        if (exit) {
+            System.exit(res);
+        } else if(res != 0) {
+            throw new RuntimeException("Unexpected exit code");
+        }
     }
 
     protected List<Path> getDataFiles(Configuration conf, String dir) throws IOException {

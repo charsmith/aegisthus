@@ -130,6 +130,16 @@ project(':aegisthus-pig') {
     }
 }
 
+project(':aegisthus-test') {
+    apply plugin: 'java'
+    apply plugin: 'groovy'
+    dependencies {
+        testCompile project(':aegisthus-pig')
+        testCompile 'org.spockframework:spock-core:0.7-groovy-2.0'
+        testCompile 'org.apache.hadoop:hadoop-minicluster:2.4.1'
+    }
+}
+
 task wrapper(type: Wrapper) {
     gradleVersion = '1.12'
 }
